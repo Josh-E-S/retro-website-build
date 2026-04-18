@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/joshestrada/Desktop/Creation%20Projects/retro-website-build/app/v2/layout.tsx"],"sourcesContent":["import type React from \"react\"\nimport type { Metadata } from \"next\"\nimport \"./v2.css\"\n\nexport const metadata: Metadata = {\n  title: \"SIGNAL V2 — Broadcast on a Dead Channel\",\n  description: \"CRT transmission studies. An experimental v2 aesthetic.\",\n}\n\nexport default function V2Layout({ children }: { children: React.ReactNode }) {\n  return <div className=\"v2-root\">{children}</div>\n}\n"],"names":[],"mappings":";;;;;;;;;AAIO,MAAM,WAAqB;IAChC,OAAO;IACP,aAAa;AACf;AAEe,SAAS,SAAS,EAAE,QAAQ,EAAiC;IAC1E,qBAAO,4XAAC;QAAI,WAAU;kBAAW;;;;;;AACnC"}}]
+}
