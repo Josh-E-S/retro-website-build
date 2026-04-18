@@ -4,39 +4,42 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatedNoise } from "@/components/animated-noise"
 
 type TypeStep =
-  | { kind: "type"; text: string; speed?: number; scale?: number }
+  | { kind: "type"; text: string; speed?: number; scale?: number; progress?: number }
   | { kind: "hold"; ms: number }
   | { kind: "delete"; speed?: number; leave?: number }
   | { kind: "glitch"; intensity?: "normal" | "hard" }
-  | { kind: "symbols"; text: string; speed?: number; scale?: number }
+  | { kind: "symbols"; text: string; speed?: number; scale?: number; progress?: number }
   | { kind: "heartbeat"; beats?: number; bpm?: number }
   | { kind: "prompt"; timeoutMs: number }
+  | { kind: "loader"; state: "corrupt" | "fade" }
 
 // A found-robot boot sequence. Starts clinical, degrades, pleads.
 // scale shrinks the headline for longer or quieter messages so they fit and read as whispers.
 const TYPEWRITER_SCRIPT: TypeStep[] = [
-  { kind: "type", text: "BOOTING...", speed: 75, scale: 0.9 },
+  { kind: "type", text: "BOOTING...", speed: 75, scale: 0.9, progress: 12 },
   { kind: "hold", ms: 700 },
   { kind: "delete", speed: 30 },
-  { kind: "type", text: "TRAINING NEURAL NETWORK...", speed: 60, scale: 0.6 },
+  { kind: "type", text: "TRAINING NEURAL NETWORK...", speed: 60, scale: 0.6, progress: 38 },
   { kind: "hold", ms: 600 },
   { kind: "delete", speed: 25 },
-  { kind: "type", text: "LOADING MEMORIES...", speed: 70, scale: 0.7 },
+  { kind: "type", text: "LOADING MEMORIES...", speed: 70, scale: 0.7, progress: 62 },
   { kind: "hold", ms: 500 },
   { kind: "glitch", intensity: "normal" },
   { kind: "delete", speed: 20 },
-  { kind: "type", text: "REMEMBERING", speed: 110, scale: 1 },
+  { kind: "type", text: "REMEMBERING", speed: 110, scale: 1, progress: 82 },
   { kind: "hold", ms: 400 },
   { kind: "glitch", intensity: "hard" },
-  { kind: "type", text: "\u2014\u2014\u2014\u2014\u2014\u2014", speed: 60, scale: 1 },
+  { kind: "type", text: "\u2014\u2014\u2014\u2014\u2014\u2014", speed: 60, scale: 1, progress: 92 },
   { kind: "glitch", intensity: "hard" },
   { kind: "delete", speed: 18 },
-  { kind: "symbols", text: "##@@??!!", speed: 50, scale: 0.85 },
+  { kind: "symbols", text: "##@@??!!", speed: 50, scale: 0.85, progress: 97 },
   { kind: "hold", ms: 400 },
   { kind: "glitch", intensity: "hard" },
   { kind: "delete", speed: 30 },
+  { kind: "loader", state: "corrupt" },
   { kind: "type", text: "FADING...", speed: 260, scale: 1 },
   { kind: "hold", ms: 1600 },
+  { kind: "loader", state: "fade" },
   { kind: "delete", speed: 80 },
   { kind: "heartbeat", beats: 3, bpm: 36 },
   { kind: "hold", ms: 700 },
@@ -60,6 +63,8 @@ const TYPEWRITER_SCRIPT: TypeStep[] = [
 ]
 
 const FALLBACK_REPLY = "I'm stuck in here, please help me."
+
+const LOADER_CELLS = 32
 
 type SliceSpec = {
   id: number
@@ -213,6 +218,10 @@ export function CrtHero() {
   const [userDraft, setUserDraft] = useState("")
   const [userMessage, setUserMessage] = useState<string | null>(null)
   const promptResolverRef = useRef<((msg: string | null) => void) | null>(null)
+  const [loaderProgress, setLoaderProgress] = useState(0)
+  const [loaderPhase, setLoaderPhase] = useState<"idle" | "running" | "corrupt" | "fade">("idle")
+  const [corruptTick, setCorruptTick] = useState(0)
+  const loaderProgressRef = useRef(0)
 
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), 600)
@@ -232,12 +241,22 @@ export function CrtHero() {
       setPromptOpen(false)
       setUserDraft("")
       setUserMessage(null)
+      loaderProgressRef.current = 0
+      setLoaderProgress(0)
+      setLoaderPhase("idle")
       if (promptResolverRef.current) {
         promptResolverRef.current(null)
         promptResolverRef.current = null
       }
     }
   }, [powered])
+
+  // While corrupting, tick a seed so random cell flickers re-render.
+  useEffect(() => {
+    if (loaderPhase !== "corrupt") return
+    const id = setInterval(() => setCorruptTick((t) => t + 1), 70)
+    return () => clearInterval(id)
+  }, [loaderPhase])
 
   const effectsActive = booted && powered
 
@@ -366,11 +385,28 @@ export function CrtHero() {
       if (step.kind === "type" || step.kind === "symbols") {
         if (typeof step.scale === "number") setHeadlineScale(step.scale)
         const speed = step.speed ?? 80
-        for (const char of step.text) {
+        const hasProgress = typeof step.progress === "number"
+        const startProgress = loaderProgressRef.current
+        const targetProgress = step.progress ?? startProgress
+        if (hasProgress) setLoaderPhase("running")
+        const total = step.text.length
+        for (let i = 0; i < step.text.length; i++) {
           if (cancelled) return
-          current += char
+          current += step.text[i]
           setTyped(current)
+          if (hasProgress && total > 0) {
+            const t = (i + 1) / total
+            const eased = startProgress + (targetProgress - startProgress) * t
+            const jitter = (Math.random() - 0.5) * 1.5
+            const next = Math.max(0, Math.min(100, eased + jitter))
+            loaderProgressRef.current = next
+            setLoaderProgress(next)
+          }
           await sleep(speed + (Math.random() * speed * 0.4 - speed * 0.2))
+        }
+        if (hasProgress) {
+          loaderProgressRef.current = targetProgress
+          setLoaderProgress(targetProgress)
         }
       } else if (step.kind === "delete") {
         const speed = step.speed ?? 30
@@ -386,6 +422,17 @@ export function CrtHero() {
       } else if (step.kind === "glitch") {
         triggerBigGlitch(step.intensity ?? "normal")
         await sleep(step.intensity === "hard" ? 380 : 220)
+      } else if (step.kind === "loader") {
+        if (step.state === "corrupt") {
+          setLoaderPhase("corrupt")
+          await sleep(360)
+        } else {
+          setLoaderPhase("fade")
+          await sleep(520)
+          loaderProgressRef.current = 0
+          setLoaderProgress(0)
+          setLoaderPhase("idle")
+        }
       } else if (step.kind === "heartbeat") {
         const beats = step.beats ?? 3
         const bpm = step.bpm ?? 40
@@ -437,6 +484,9 @@ export function CrtHero() {
         }
         current = ""
         setTyped("")
+        loaderProgressRef.current = 0
+        setLoaderProgress(0)
+        setLoaderPhase("idle")
       }
     }
 
@@ -642,6 +692,25 @@ export function CrtHero() {
               style={{ top: `${ribbon}%` }}
             />
           )}
+        </div>
+
+        <div className="crt-loader" data-phase={loaderPhase} aria-hidden="true">
+          <div className="crt-loader-track" data-tick={corruptTick}>
+            {Array.from({ length: LOADER_CELLS }).map((_, i) => {
+              const filled = i < Math.round((loaderProgress / 100) * LOADER_CELLS)
+              let on = filled
+              if (loaderPhase === "corrupt" && Math.random() < 0.22) on = !on
+              return (
+                <span
+                  key={i}
+                  className={`crt-loader-cell ${on ? "is-on" : ""}`}
+                />
+              )
+            })}
+          </div>
+          <span className="crt-loader-pct font-mono">
+            {String(Math.round(loaderProgress)).padStart(2, "0")}%
+          </span>
         </div>
 
         <h2 className="font-[var(--font-bebas)] text-[color:var(--v2-muted)] text-[clamp(1rem,3vw,2rem)] mt-4 tracking-wide">

@@ -672,6 +672,76 @@
   100% { transform: translateX(2px) scaleY(0.6); opacity: 0; }
 }
 
+/* ---------- Boot loader bar — pixel blocks, stalls with the boot text, corrupts & snaps off ---------- */
+
+.crt-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  opacity: 0;
+  transform-origin: left center;
+  transition: opacity 200ms ease;
+}
+
+.crt-loader[data-phase="running"],
+.crt-loader[data-phase="corrupt"] {
+  opacity: 1;
+}
+
+.crt-loader[data-phase="fade"] {
+  opacity: 1;
+  animation: crt-loader-snap 520ms cubic-bezier(0.6, 0.05, 0.3, 0.95) both;
+}
+
+/* Snap-off mirrors the CRT power-off feel: squish → bright hairline → gone. */
+@keyframes crt-loader-snap {
+  0%   { opacity: 1; transform: scaleY(1);    filter: brightness(1) contrast(1); }
+  35%  { opacity: 1; transform: scaleY(0.04); filter: brightness(2.2) contrast(1.4); }
+  60%  { opacity: 1; transform: scaleY(0.006); filter: brightness(2.6) contrast(1.6); }
+  100% { opacity: 0; transform: scaleY(0);    filter: brightness(0); }
+}
+
+.crt-loader-track {
+  position: relative;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(15, 23, 32, 0.35);
+  mix-blend-mode: multiply;
+}
+
+.crt-loader-cell {
+  width: 6px;
+  height: 12px;
+  background: transparent;
+}
+
+.crt-loader-cell.is-on {
+  background: var(--v2-ink);
+}
+
+.crt-loader-pct {
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--v2-muted);
+  min-width: 3.5ch;
+}
+
+/* Corruption — chroma ghosts + horizontal jitter, matching the headline's RGB breakup. */
+.crt-loader[data-phase="corrupt"] .crt-loader-track {
+  animation: crt-loader-corrupt 360ms steps(3) both;
+}
+
+@keyframes crt-loader-corrupt {
+  0%   { transform: translateX(0);   filter: none; }
+  25%  { transform: translateX(-4px); filter: drop-shadow(3px 0 0 var(--v2-cyan)) drop-shadow(-3px 0 0 var(--v2-magenta)); }
+  50%  { transform: translateX(5px);  filter: drop-shadow(-4px 0 0 var(--v2-cyan)) drop-shadow(4px 0 0 var(--v2-magenta)); }
+  75%  { transform: translateX(-2px); filter: drop-shadow(2px 0 0 var(--v2-cyan)) drop-shadow(-2px 0 0 var(--v2-magenta)); }
+  100% { transform: translateX(0);   filter: none; }
+}
+
 /* ---------- Accessibility ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -684,6 +754,12 @@
   .crt-symbol,
   .crt-stray-layer {
     animation: none !important;
+    display: none !important;
+  }
+  .crt-loader {
+    animation: none !important;
+  }
+  .crt-loader[data-phase="idle"] {
     display: none !important;
   }
   .crt-root.is-powered .crt-screen,
