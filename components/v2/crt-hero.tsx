@@ -205,7 +205,7 @@ export function CrtHero() {
   const headlineRef = useRef<HTMLHeadingElement>(null)
   const [booted, setBooted] = useState(false)
   const [powered, setPowered] = useState(true)
-  const [userToggled, setUserToggled] = useState(false)
+  const [sequenceStarted, setSequenceStarted] = useState(false)
   const [slices, setSlices] = useState<SliceSpec[]>([])
   const [ribbon, setRibbon] = useState<number | null>(null)
   const [clumps, setClumps] = useState<Clump[]>([])
@@ -258,7 +258,20 @@ export function CrtHero() {
     return () => clearInterval(id)
   }, [loaderPhase])
 
-  const effectsActive = booted && powered
+  const effectsActive = booted && powered && sequenceStarted
+
+  // Intro title loop — before the user starts the sequence, show "ABLATION"
+  // pulsing on the headline. When they press the warning, we clear it and
+  // the typewriter takes over.
+  useEffect(() => {
+    if (!booted) return
+    if (sequenceStarted) {
+      setTyped("")
+      return
+    }
+    setTyped("CONVERGENCE")
+    setHeadlineScale(1)
+  }, [booted, sequenceStarted])
 
   // Tetris drops — independent of the headline glitch. Each block self-schedules,
   // so drops overlap at irregular intervals instead of firing in coordinated bursts.
@@ -506,26 +519,9 @@ export function CrtHero() {
   return (
     <section
       id="hero"
-      className={`crt-root relative min-h-screen overflow-hidden flex items-center pl-6 md:pl-28 pr-6 md:pr-12 ${
-        userToggled ? (powered ? "is-powered" : "is-off") : ""
-      }`}
+      className="crt-root relative min-h-screen overflow-hidden flex items-center pl-6 md:pl-28 pr-6 md:pr-12"
     >
       <div className="crt-dead-surface" aria-hidden="true" />
-
-      <button
-        type="button"
-        onClick={() => {
-          setUserToggled(true)
-          setPowered((p) => !p)
-        }}
-        aria-label={powered ? "Power off CRT" : "Power on CRT"}
-        aria-pressed={powered}
-        className={`crt-power ${powered ? "is-on" : "is-off"}`}
-      >
-        <span className="crt-power-ring" aria-hidden="true" />
-        <span className="crt-power-glyph" aria-hidden="true" />
-        <span className="crt-power-label font-mono">{powered ? "PWR" : "OFF"}</span>
-      </button>
 
       <div className="crt-screen">
       <div className="crt-vignette" aria-hidden="true" />
@@ -622,10 +618,10 @@ export function CrtHero() {
             ref={headlineRef}
             className={`crt-headline font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)] ${
               booted ? "is-visible" : "is-hidden"
-            } ${heartbeat ? "is-muted" : ""}`}
+            } ${heartbeat ? "is-muted" : ""} ${!sequenceStarted ? "is-title-loop" : ""}`}
           >
             {typed || "\u00A0"}
-            <span className="crt-caret" aria-hidden="true" />
+            {sequenceStarted && <span className="crt-caret" aria-hidden="true" />}
           </h1>
 
           {glitching && typed && (
@@ -722,17 +718,36 @@ export function CrtHero() {
           signal persists either way.
         </p>
 
-        <div className="mt-16 flex items-center gap-8">
+        <div className="mt-16 flex items-center gap-4">
           <a
             href="#"
             className="group inline-flex items-center gap-3 border border-[color:var(--v2-fg)]/30 px-6 py-3 font-mono text-xs uppercase tracking-widest text-[color:var(--v2-fg)] hover:border-[color:var(--v2-accent)] hover:text-[color:var(--v2-accent)] transition-colors duration-200"
           >
-            Decode Transmission
+            Decode with Neural Network
             <span className="inline-block w-2 h-2 bg-current animate-pulse" aria-hidden="true" />
           </a>
+          <button
+            type="button"
+            onClick={() => setSequenceStarted(true)}
+            disabled={sequenceStarted}
+            aria-label="Begin anomalous transmission"
+            className={`crt-warn-btn ${sequenceStarted ? "is-armed" : ""}`}
+          >
+            <svg viewBox="0 0 24 22" aria-hidden="true" className="crt-warn-svg">
+              <path
+                d="M12 2 L23 21 L1 21 Z"
+                fill="#e8c23a"
+                stroke="#1f2a37"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+              />
+              <rect x="11" y="9" width="2" height="6" fill="#1f2a37" />
+              <rect x="11" y="17" width="2" height="2" fill="#1f2a37" />
+            </svg>
+          </button>
           <a
             href="/"
-            className="font-mono text-xs uppercase tracking-widest text-[color:var(--v2-muted)] hover:text-[color:var(--v2-fg)] transition-colors duration-200"
+            className="font-mono text-xs uppercase tracking-widest text-[color:var(--v2-muted)] hover:text-[color:var(--v2-fg)] transition-colors duration-200 ml-4"
           >
             ← Back to v1
           </a>

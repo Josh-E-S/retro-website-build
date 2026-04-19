@@ -672,6 +672,59 @@
   100% { transform: translateX(2px) scaleY(0.6); opacity: 0; }
 }
 
+/* ---------- Intro title loop — calm "ABLATION" pulse before the sequence begins ---------- */
+
+.crt-headline.is-title-loop {
+  animation: crt-title-pulse 3.8s ease-in-out infinite;
+}
+
+@keyframes crt-title-pulse {
+  0%, 100% { opacity: 0.22; letter-spacing: 0.12em; }
+  45%      { opacity: 1;    letter-spacing: -0.01em; }
+  60%      { opacity: 1;    letter-spacing: -0.01em; }
+}
+
+/* ---------- Warning-triangle start button ---------- */
+
+.crt-warn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+  animation: crt-warn-pulse 1.6s ease-in-out infinite;
+}
+
+.crt-warn-btn:hover {
+  transform: translateY(-1px) scale(1.04);
+  filter: drop-shadow(0 0 6px rgba(232, 194, 58, 0.6));
+}
+
+.crt-warn-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.crt-warn-btn.is-armed {
+  cursor: default;
+  animation: none;
+  opacity: 0.45;
+}
+
+.crt-warn-svg {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes crt-warn-pulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(232, 194, 58, 0)); }
+  50%      { filter: drop-shadow(0 0 8px rgba(232, 194, 58, 0.7)); }
+}
+
 /* ---------- Boot loader bar — pixel blocks, stalls with the boot text, corrupts & snaps off ---------- */
 
 .crt-loader {
@@ -761,6 +814,10 @@
   }
   .crt-loader[data-phase="idle"] {
     display: none !important;
+  }
+  .crt-headline.is-title-loop,
+  .crt-warn-btn {
+    animation: none !important;
   }
   .crt-root.is-powered .crt-screen,
   .crt-root.is-off .crt-screen {
