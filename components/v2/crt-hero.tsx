@@ -1,6 +1,5 @@
 "use client"
 
-import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatedNoise } from "@/components/animated-noise"
 
@@ -67,30 +66,25 @@ const FALLBACK_REPLY = "I'm stuck in here, please help me."
 
 const LOADER_CELLS = 32
 
-// Private-use codepoints used as inline markers for bitmap glyphs in the title
-// typewriter. The typewriter still operates on a flat string; the render layer
-// substitutes each marker for its bitmap.
-const GLYPH_HEART_CHAR = "\uE001"
-const GLYPH_X_CHAR = "\uE002"
-const GLYPH_ROBOT_CHAR = "\uE003"
-
+// Intro title loop for "The Ablation Study" — typed in three drifting phrases
+// with micro-pauses at each ellipsis so the ... actually breathe.
 const TITLE_SCRIPT: TypeStep[] = [
-  { kind: "type", text: "CONVERGENCE", speed: 95 },
+  { kind: "type", text: "Welcome\u2026", speed: 110 },
+  { kind: "hold", ms: 440 },
+  { kind: "type", text: "to\u2026", speed: 110 },
+  { kind: "hold", ms: 440 },
+  { kind: "type", text: "Apollo Labs\u2026", speed: 110 },
   { kind: "hold", ms: 1500 },
   { kind: "delete", speed: 55 },
-  { kind: "hold", ms: 320 },
-  { kind: "type", text: `PROJECT\u00A0${GLYPH_HEART_CHAR}`, speed: 110 },
+  { kind: "hold", ms: 340 },
+  { kind: "type", text: "Subjects please\u2026", speed: 110 },
+  { kind: "hold", ms: 1300 },
+  { kind: "delete", speed: 55 },
+  { kind: "hold", ms: 340 },
+  { kind: "type", text: "Complete enrollment\u2026", speed: 110 },
   { kind: "hold", ms: 1500 },
   { kind: "delete", speed: 55 },
-  { kind: "hold", ms: 320 },
-  {
-    kind: "type",
-    text: `${GLYPH_ROBOT_CHAR}\u00A0BLACKBOX\u00A0${GLYPH_X_CHAR}`,
-    speed: 110,
-  },
-  { kind: "hold", ms: 1500 },
-  { kind: "delete", speed: 55 },
-  { kind: "hold", ms: 320 },
+  { kind: "hold", ms: 340 },
 ]
 
 type SliceSpec = {
@@ -226,24 +220,6 @@ function buildClump(id: number, opts?: { subtle?: boolean }): Clump {
     shiftX: (Math.random() * 80 - 40) | 0,
     ttl: subtle ? 160 + Math.random() * 180 : 200 + Math.random() * 220,
   }
-}
-
-function TitleGlyph({ cells }: { cells: [number, number][] }) {
-  // Inline 7x7 bitmap sized in em so it scales with the headline font size.
-  return (
-    <span className="crt-title-glyph" aria-hidden="true">
-      {cells.map(([row, col], i) => (
-        <span
-          key={i}
-          className="crt-title-glyph-cell"
-          style={{
-            top: `${row * 0.1}em`,
-            left: `${col * 0.1}em`,
-          }}
-        />
-      ))}
-    </span>
-  )
 }
 
 export function CrtHero() {
@@ -551,24 +527,6 @@ export function CrtHero() {
 
   const glitching = slices.length > 0
 
-  const renderTyped = (value: string) => {
-    if (!value) return "\u00A0"
-    const out: React.ReactNode[] = []
-    for (let i = 0; i < value.length; i++) {
-      const ch = value[i]
-      if (ch === GLYPH_HEART_CHAR) {
-        out.push(<TitleGlyph key={i} cells={SYMBOL_HEART} />)
-      } else if (ch === GLYPH_X_CHAR) {
-        out.push(<TitleGlyph key={i} cells={SYMBOL_X} />)
-      } else if (ch === GLYPH_ROBOT_CHAR) {
-        out.push(<TitleGlyph key={i} cells={SYMBOL_ROBOT} />)
-      } else {
-        out.push(ch)
-      }
-    }
-    return out
-  }
-
   return (
     <section
       id="hero"
@@ -673,7 +631,7 @@ export function CrtHero() {
               booted ? "is-visible" : "is-hidden"
             } ${heartbeat ? "is-muted" : ""}`}
           >
-            {renderTyped(typed)}
+            {typed || "\u00A0"}
             <span className="crt-caret" aria-hidden="true" />
           </h1>
 
@@ -683,13 +641,13 @@ export function CrtHero() {
                 aria-hidden="true"
                 className="crt-headline crt-chroma crt-chroma-cy font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)]"
               >
-                {renderTyped(typed)}
+                {typed || "\u00A0"}
               </h1>
               <h1
                 aria-hidden="true"
                 className="crt-headline crt-chroma crt-chroma-mg font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)]"
               >
-                {renderTyped(typed)}
+                {typed || "\u00A0"}
               </h1>
             </>
           )}
@@ -704,7 +662,7 @@ export function CrtHero() {
                 transform: `translate3d(${s.shiftX}px, 0, 0)`,
               }}
             >
-              {renderTyped(typed)}
+              {typed || "\u00A0"}
             </h1>
           ))}
 

@@ -672,24 +672,6 @@
   100% { transform: translateX(2px) scaleY(0.6); opacity: 0; }
 }
 
-/* ---------- Inline bitmap glyphs used within the typewriter title ---------- */
-
-.crt-title-glyph {
-  position: relative;
-  display: inline-block;
-  width: 0.7em;
-  height: 0.7em;
-  vertical-align: 0.02em;
-  margin: 0 0.08em;
-}
-
-.crt-title-glyph-cell {
-  position: absolute;
-  width: 0.1em;
-  height: 0.1em;
-  background: currentColor;
-}
-
 /* ---------- Warning-triangle start button ---------- */
 
 .crt-warn-btn {
