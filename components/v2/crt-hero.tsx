@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatedNoise } from "@/components/animated-noise"
 
@@ -65,6 +66,32 @@ const TYPEWRITER_SCRIPT: TypeStep[] = [
 const FALLBACK_REPLY = "I'm stuck in here, please help me."
 
 const LOADER_CELLS = 32
+
+// Private-use codepoints used as inline markers for bitmap glyphs in the title
+// typewriter. The typewriter still operates on a flat string; the render layer
+// substitutes each marker for its bitmap.
+const GLYPH_HEART_CHAR = "\uE001"
+const GLYPH_X_CHAR = "\uE002"
+const GLYPH_ROBOT_CHAR = "\uE003"
+
+const TITLE_SCRIPT: TypeStep[] = [
+  { kind: "type", text: "CONVERGENCE", speed: 95 },
+  { kind: "hold", ms: 1500 },
+  { kind: "delete", speed: 55 },
+  { kind: "hold", ms: 320 },
+  { kind: "type", text: `PROJECT\u00A0${GLYPH_HEART_CHAR}`, speed: 110 },
+  { kind: "hold", ms: 1500 },
+  { kind: "delete", speed: 55 },
+  { kind: "hold", ms: 320 },
+  {
+    kind: "type",
+    text: `${GLYPH_ROBOT_CHAR}\u00A0BLACKBOX\u00A0${GLYPH_X_CHAR}`,
+    speed: 110,
+  },
+  { kind: "hold", ms: 1500 },
+  { kind: "delete", speed: 55 },
+  { kind: "hold", ms: 320 },
+]
 
 type SliceSpec = {
   id: number
@@ -201,6 +228,24 @@ function buildClump(id: number, opts?: { subtle?: boolean }): Clump {
   }
 }
 
+function TitleGlyph({ cells }: { cells: [number, number][] }) {
+  // Inline 7x7 bitmap sized in em so it scales with the headline font size.
+  return (
+    <span className="crt-title-glyph" aria-hidden="true">
+      {cells.map(([row, col], i) => (
+        <span
+          key={i}
+          className="crt-title-glyph-cell"
+          style={{
+            top: `${row * 0.1}em`,
+            left: `${col * 0.1}em`,
+          }}
+        />
+      ))}
+    </span>
+  )
+}
+
 export function CrtHero() {
   const headlineRef = useRef<HTMLHeadingElement>(null)
   const [booted, setBooted] = useState(false)
@@ -258,20 +303,8 @@ export function CrtHero() {
     return () => clearInterval(id)
   }, [loaderPhase])
 
+  const typewriterActive = booted && powered
   const effectsActive = booted && powered && sequenceStarted
-
-  // Intro title loop — before the user starts the sequence, show "ABLATION"
-  // pulsing on the headline. When they press the warning, we clear it and
-  // the typewriter takes over.
-  useEffect(() => {
-    if (!booted) return
-    if (sequenceStarted) {
-      setTyped("")
-      return
-    }
-    setTyped("CONVERGENCE")
-    setHeadlineScale(1)
-  }, [booted, sequenceStarted])
 
   // Tetris drops — independent of the headline glitch. Each block self-schedules,
   // so drops overlap at irregular intervals instead of firing in coordinated bursts.
@@ -381,9 +414,11 @@ export function CrtHero() {
     return () => clearTimeout(timer)
   }, [effectsActive, triggerBigGlitch])
 
-  // Typewriter — the found-robot boot sequence. Cancellable; pauses when power is off.
+  // Typewriter — runs either the title loop (pre-start) or the boot sequence
+  // (post-start). Cancellable; pauses when power is off.
   useEffect(() => {
-    if (!effectsActive) return
+    if (!typewriterActive) return
+    const script = sequenceStarted ? TYPEWRITER_SCRIPT : TITLE_SCRIPT
     let cancelled = false
     let pendingTimer: ReturnType<typeof setTimeout> | null = null
     let current = ""
@@ -491,7 +526,7 @@ export function CrtHero() {
 
     const run = async () => {
       while (!cancelled) {
-        for (const step of TYPEWRITER_SCRIPT) {
+        for (const step of script) {
           if (cancelled) return
           await runStep(step)
         }
@@ -512,9 +547,27 @@ export function CrtHero() {
       setHeartbeat(null)
       setHeadlineScale(1)
     }
-  }, [effectsActive, triggerBigGlitch])
+  }, [typewriterActive, sequenceStarted, triggerBigGlitch])
 
   const glitching = slices.length > 0
+
+  const renderTyped = (value: string) => {
+    if (!value) return "\u00A0"
+    const out: React.ReactNode[] = []
+    for (let i = 0; i < value.length; i++) {
+      const ch = value[i]
+      if (ch === GLYPH_HEART_CHAR) {
+        out.push(<TitleGlyph key={i} cells={SYMBOL_HEART} />)
+      } else if (ch === GLYPH_X_CHAR) {
+        out.push(<TitleGlyph key={i} cells={SYMBOL_X} />)
+      } else if (ch === GLYPH_ROBOT_CHAR) {
+        out.push(<TitleGlyph key={i} cells={SYMBOL_ROBOT} />)
+      } else {
+        out.push(ch)
+      }
+    }
+    return out
+  }
 
   return (
     <section
@@ -618,10 +671,10 @@ export function CrtHero() {
             ref={headlineRef}
             className={`crt-headline font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)] ${
               booted ? "is-visible" : "is-hidden"
-            } ${heartbeat ? "is-muted" : ""} ${!sequenceStarted ? "is-title-loop" : ""}`}
+            } ${heartbeat ? "is-muted" : ""}`}
           >
-            {typed || "\u00A0"}
-            {sequenceStarted && <span className="crt-caret" aria-hidden="true" />}
+            {renderTyped(typed)}
+            <span className="crt-caret" aria-hidden="true" />
           </h1>
 
           {glitching && typed && (
@@ -630,13 +683,13 @@ export function CrtHero() {
                 aria-hidden="true"
                 className="crt-headline crt-chroma crt-chroma-cy font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)]"
               >
-                {typed}
+                {renderTyped(typed)}
               </h1>
               <h1
                 aria-hidden="true"
                 className="crt-headline crt-chroma crt-chroma-mg font-[var(--font-bebas)] leading-[0.9] tracking-tight text-[clamp(2rem,7vw,6.5rem)]"
               >
-                {typed}
+                {renderTyped(typed)}
               </h1>
             </>
           )}
@@ -651,7 +704,7 @@ export function CrtHero() {
                 transform: `translate3d(${s.shiftX}px, 0, 0)`,
               }}
             >
-              {typed}
+              {renderTyped(typed)}
             </h1>
           ))}
 

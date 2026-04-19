@@ -672,16 +672,22 @@
   100% { transform: translateX(2px) scaleY(0.6); opacity: 0; }
 }
 
-/* ---------- Intro title loop — calm "ABLATION" pulse before the sequence begins ---------- */
+/* ---------- Inline bitmap glyphs used within the typewriter title ---------- */
 
-.crt-headline.is-title-loop {
-  animation: crt-title-pulse 3.8s ease-in-out infinite;
+.crt-title-glyph {
+  position: relative;
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  vertical-align: 0.02em;
+  margin: 0 0.08em;
 }
 
-@keyframes crt-title-pulse {
-  0%, 100% { opacity: 0.22; letter-spacing: 0.12em; }
-  45%      { opacity: 1;    letter-spacing: -0.01em; }
-  60%      { opacity: 1;    letter-spacing: -0.01em; }
+.crt-title-glyph-cell {
+  position: absolute;
+  width: 0.1em;
+  height: 0.1em;
+  background: currentColor;
 }
 
 /* ---------- Warning-triangle start button ---------- */
@@ -815,7 +821,6 @@
   .crt-loader[data-phase="idle"] {
     display: none !important;
   }
-  .crt-headline.is-title-loop,
   .crt-warn-btn {
     animation: none !important;
   }
