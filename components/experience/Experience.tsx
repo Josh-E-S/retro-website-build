@@ -67,6 +67,11 @@ export function Experience() {
         break
       case "glitch":
         if (art) art.glitch(cue.intensity)
+        // Hard glitches also fire a glitch sound; normal ones stay visual-only
+        // so they don't become loud every time.
+        if (audioRef.current && cue.intensity === "hard") {
+          audioRef.current.playOneShot("glitch", { gain: 0.8 })
+        }
         break
       case "symbol":
         if (art) art.symbol(cue.kind)
@@ -77,10 +82,39 @@ export function Experience() {
       case "logo_position":
         setLogoPos(cue.position)
         break
-      case "audio":
+      case "audio": {
+        // Route the declared spec filenames to the available sound bank.
+        const a = audioRef.current
+        if (!a) break
+        const linGain = Math.pow(10, cue.volume / 20) // cue.volume is dB
+        if (cue.file.startsWith("fuse_")) {
+          a.playOneShot("fuse", { gain: linGain, pan: cue.pan })
+        } else if (cue.file.startsWith("ambient_tick") || cue.file.startsWith("crt_screen_clear")) {
+          a.playOneShot("tick", { gain: linGain, pan: cue.pan })
+        } else {
+          // crt_power_on.wav and similar — no asset yet; drop silently.
+        }
+        break
+      }
       case "ambient_start":
+        if (audioRef.current) {
+          const layerMap = { ballast: "ballast", hvac: "hvac", fan: "fan", crt_whine: "crtWhine", crt_hum: "crtHum" } as const
+          const mapped = layerMap[cue.layer]
+          if (mapped) audioRef.current.startAmbient(mapped, cue.fadeMs)
+        }
+        break
       case "ambient_dip":
-        // Stubbed until Phase 3 audio engine.
+        if (audioRef.current) {
+          const layerMap = { ballast: "ballast", hvac: "hvac", fan: "fan", crt_whine: "crtWhine", crt_hum: "crtHum" } as const
+          const mapped = layerMap[cue.layer]
+          if (mapped) audioRef.current.dipAmbient(mapped, cue.depth, cue.durationMs)
+        }
+        break
+      case "music_start":
+        if (audioRef.current) audioRef.current.startMusic(cue.fadeMs)
+        break
+      case "music_stop":
+        if (audioRef.current) audioRef.current.stopMusic(cue.fadeMs)
         break
     }
     // eslint-disable-next-line no-console

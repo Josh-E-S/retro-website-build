@@ -51,8 +51,10 @@ export type Cue =
   | { id: string; t: number; type: "symbol"; kind?: "heart" | "x" | "robot" }
   | { id: string; t: number; type: "clump"; subtle?: boolean }
   | { id: string; t: number; type: "logo_position"; position: LogoPosition }
+  | { id: string; t: number; type: "music_start"; fadeMs?: number }
+  | { id: string; t: number; type: "music_stop"; fadeMs?: number }
 
-export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan"
+export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan" | "crt_hum"
 
 // ── Boot checklist lines (rendered centered in log mode) ───────────────
 
@@ -103,6 +105,10 @@ export const sequence: Cue[] = [
   { id: "amb_hvac", t: 1.0, type: "ambient_start", layer: "hvac", target: -30, fadeMs: 1500 },
   { id: "amb_whine", t: 1.0, type: "ambient_start", layer: "crt_whine", target: -36, fadeMs: 1500 },
   { id: "amb_fan", t: 1.4, type: "ambient_start", layer: "fan", target: -28, fadeMs: 1500 },
+  { id: "amb_crt_hum", t: 1.4, type: "ambient_start", layer: "crt_hum", target: -24, fadeMs: 1800 },
+
+  // Lobby music bed fades in alongside the ambient layers.
+  { id: "music_start", t: 1.2, type: "music_start", fadeMs: 2400 },
 
   // t=1.2 — logo comes up, big and centered, heartbeat pulse
   { id: "logo_center", t: 1.2, type: "logo_position", position: "center" },
