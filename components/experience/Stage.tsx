@@ -6,40 +6,61 @@ import { AnimatedNoise } from "./AnimatedNoise"
 /*
  * Stage — the CRT frame the post-unlock experience lives inside.
  *
- * Palette: cream/ink. Choice Industries reads as institutional, not
- * spaceship. The CRT is a desk terminal in an office. Scanlines are
- * subtle dark ink bands over paper, the glow is a soft ink smudge,
- * and the "chromatic aberration" is a print-offset registration shift
- * (cyan/magenta) rather than phosphor fringes.
+ * Power-on animation (plays once on mount):
+ *   0ms   — tiny bright horizontal line at screen center
+ *   140ms — line stretches to ~40% width
+ *   240ms — line reaches ~95% width, tube voltage bloom
+ *   400ms — image snaps open vertically into a thin rectangle
+ *   560ms — rectangle expands to full screen, one hard flicker
+ *   760ms — stable
  *
- * Layer stack:
+ * Layer stack, back to front:
  *   1. Paper backdrop (warm radial wash)
- *   2. children (terminal)
- *   3. Scanlines (subtle dark ink bands, multiply)
- *   4. Rolling interlace band (soft brightening drift every ~8s)
+ *   2. children (Terminal, Artifacts, etc.)
+ *   3. Scanlines
+ *   4. Rolling interlace band
  *   5. Occasional screen tear
  *   6. Animated noise (paper grain)
  *   7. Corner vignette
+ *   8. Subtle flicker
  */
 
 type Props = {
-  poweredOn: boolean
   children: ReactNode
 }
 
-export function Stage({ poweredOn, children }: Props) {
+type PowerStage = 0 | 1 | 2 | 3 | 4
+
+export function Stage({ children }: Props) {
+  const [stage, setStage] = useState<PowerStage>(0)
+
+  // Drive the power-on stages via chained timeouts. Each stage sets a
+  // data attribute the CSS keys off to animate width/height/opacity.
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setStage(1), 140)
+    const t2 = window.setTimeout(() => setStage(2), 240)
+    const t3 = window.setTimeout(() => setStage(3), 400)
+    const t4 = window.setTimeout(() => setStage(4), 620)
+    return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+      window.clearTimeout(t3)
+      window.clearTimeout(t4)
+    }
+  }, [])
+
   const [bandKey, setBandKey] = useState(0)
   useEffect(() => {
-    if (!poweredOn) return
+    if (stage < 4) return
     const id = window.setInterval(() => {
       setBandKey((n) => n + 1)
     }, 8000)
     return () => window.clearInterval(id)
-  }, [poweredOn])
+  }, [stage])
 
   const [tearY, setTearY] = useState<number | null>(null)
   useEffect(() => {
-    if (!poweredOn) return
+    if (stage < 4) return
     let timeoutId: number
     const schedule = () => {
       const delay = 22000 + Math.random() * 16000
@@ -51,7 +72,21 @@ export function Stage({ poweredOn, children }: Props) {
     }
     schedule()
     return () => window.clearTimeout(timeoutId)
-  }, [poweredOn])
+  }, [stage])
+
+  // Power-on visual: a white bright "beam" that grows first horizontally,
+  // then vertically, then settles into the full screen. Rendered on top of
+  // the content until stage 4, at which point it fades out.
+  const beam =
+    stage === 0
+      ? { width: "2px", height: "2px", opacity: 1, background: "#fff" }
+      : stage === 1
+      ? { width: "40%", height: "2px", opacity: 1, background: "#fff" }
+      : stage === 2
+      ? { width: "95%", height: "3px", opacity: 1, background: "#fff" }
+      : stage === 3
+      ? { width: "100%", height: "30%", opacity: 0.92, background: "#fff" }
+      : { width: "100%", height: "100%", opacity: 0, background: "#fff" }
 
   return (
     <div
@@ -66,9 +101,8 @@ export function Stage({ poweredOn, children }: Props) {
         style={{
           position: "absolute",
           inset: 0,
-          clipPath: poweredOn ? "inset(0 0 0 0)" : "inset(50% 50% 50% 50%)",
-          transition: "clip-path 520ms cubic-bezier(0.2, 0.7, 0.2, 1)",
-          opacity: poweredOn ? 1 : 0,
+          opacity: stage >= 3 ? 1 : 0,
+          transition: "opacity 260ms ease-out",
         }}
       >
         {/* Paper base */}
@@ -78,11 +112,11 @@ export function Stage({ poweredOn, children }: Props) {
             inset: 0,
             background:
               "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55) 0%, transparent 55%), radial-gradient(ellipse at 50% 110%, var(--paper-deep) 0%, var(--paper) 60%)",
+            animation: stage === 3 ? "crt-snap-flicker 240ms ease-out" : undefined,
           }}
         />
 
-        {/* Content layer. Print-registration offset gives a subtle CMYK
-            ghost on body text without the phosphor-style glow of green CRTs. */}
+        {/* Content layer — cyan/magenta print-registration offset */}
         <div
           style={{
             position: "absolute",
@@ -97,7 +131,7 @@ export function Stage({ poweredOn, children }: Props) {
           {children}
         </div>
 
-        {/* Scanlines — dark ink bands, multiplied so they stay subtle on paper. */}
+        {/* Scanlines */}
         <div
           style={{
             position: "absolute",
@@ -110,7 +144,7 @@ export function Stage({ poweredOn, children }: Props) {
           }}
         />
 
-        {/* Rolling band — soft brightening wash drifting up. */}
+        {/* Rolling band */}
         <div
           key={bandKey}
           style={{
@@ -128,10 +162,10 @@ export function Stage({ poweredOn, children }: Props) {
           }}
         />
 
-        {/* Noise — paper grain */}
+        {/* Noise */}
         <AnimatedNoise opacity={0.05} />
 
-        {/* Vignette — warm ink corners */}
+        {/* Vignette */}
         <div
           style={{
             position: "absolute",
@@ -143,7 +177,7 @@ export function Stage({ poweredOn, children }: Props) {
           }}
         />
 
-        {/* Subtle flicker — near-imperceptible */}
+        {/* Subtle flicker */}
         <div
           style={{
             position: "absolute",
@@ -174,6 +208,34 @@ export function Stage({ poweredOn, children }: Props) {
         )}
       </div>
 
+      {/* Power-on beam. Sits on top until stage 4, then fades. */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          pointerEvents: "none",
+          zIndex: 20,
+        }}
+      >
+        <div
+          style={{
+            width: beam.width,
+            height: beam.height,
+            background: beam.background,
+            opacity: beam.opacity,
+            transition:
+              "width 160ms ease-out, height 220ms ease-out, opacity 260ms ease-out",
+            boxShadow:
+              stage < 4
+                ? "0 0 16px rgba(255,255,255,0.8), 0 0 40px rgba(255,255,255,0.3)"
+                : "none",
+          }}
+        />
+      </div>
+
       <style>{`
         @keyframes crt-band-drift {
           from { top: 100%; }
@@ -187,6 +249,12 @@ export function Stage({ poweredOn, children }: Props) {
           72% { background: rgba(255,255,255,0); }
           73% { background: rgba(255,255,255,0.05); }
           74% { background: rgba(255,255,255,0); }
+        }
+        @keyframes crt-snap-flicker {
+          0% { filter: brightness(1.5); }
+          40% { filter: brightness(0.85); }
+          70% { filter: brightness(1.1); }
+          100% { filter: brightness(1); }
         }
       `}</style>
     </div>

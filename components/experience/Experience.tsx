@@ -5,7 +5,7 @@ import { Wakeup } from "./Wakeup"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
 import { Artifacts, type ArtifactsHandle } from "./Artifacts"
-import { RecordingMark } from "./RecordingMark"
+import { LogoStage, type LogoPosition as LogoStatePosition } from "./LogoStage"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
 
@@ -13,21 +13,16 @@ import { sequence, type Cue } from "@/lib/experience/sequence"
  * Experience — top-level client component.
  *
  * State machine:
- *   "wakeup"  — subjective blur come-to; center button unlocks
- *   "running" — Stage mounted; clock drives cues into Terminal + Artifacts
- *
- * Cue dispatch (Phase 2b):
- *   - stanza / log_line / log_dots / clear / cursor_blink / eve_line → Terminal
- *   - artifacts_ambient / glitch / symbol / clump → Artifacts
- *   - crt_power_on → Stage
- *   - audio / ambient_* → no-ops until Phase 3
+ *   "wakeup"  — black screen with ESTABLISH LINK power button
+ *   "running" — Stage mounted (auto-plays power-on animation); clock
+ *               drives cues into Terminal / Artifacts / LogoStage
  */
 
 type Phase = "wakeup" | "running"
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("wakeup")
-  const [poweredOn, setPoweredOn] = useState(false)
+  const [logoPos, setLogoPos] = useState<LogoStatePosition>("hidden")
   const terminalRef = useRef<TerminalHandle | null>(null)
   const artifactsRef = useRef<ArtifactsHandle | null>(null)
   const cursorRef = useRef(0)
@@ -36,9 +31,6 @@ export function Experience() {
     const term = terminalRef.current
     const art = artifactsRef.current
     switch (cue.type) {
-      case "crt_power_on":
-        setPoweredOn(true)
-        break
       case "stanza":
         if (term) void term.stanza(cue.lines, {
           cps: cue.cps,
@@ -76,8 +68,8 @@ export function Experience() {
       case "clump":
         if (art) art.clump({ subtle: cue.subtle })
         break
-      case "logo":
-        if (term) void term.logo(cue.holdMs)
+      case "logo_position":
+        setLogoPos(cue.position)
         break
       case "audio":
       case "ambient_start":
@@ -118,10 +110,10 @@ export function Experience() {
     <main aria-hidden="true">
       {phase === "wakeup" && <Wakeup onUnlock={handleUnlock} />}
       {phase === "running" && (
-        <Stage poweredOn={poweredOn}>
+        <Stage>
           <Terminal onReady={handleTerminalReady} />
           <Artifacts ref={artifactsRef} />
-          <RecordingMark />
+          <LogoStage position={logoPos} />
         </Stage>
       )}
     </main>
