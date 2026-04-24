@@ -111,7 +111,10 @@ export function Experience() {
       {phase === "wakeup" && <Wakeup onUnlock={handleUnlock} />}
       {phase === "running" && (
         <Stage>
-          <Terminal onReady={handleTerminalReady} />
+          <Terminal
+            onReady={handleTerminalReady}
+            avoidCornerLogo={logoPos === "corner"}
+          />
           <Artifacts ref={artifactsRef} />
           <LogoStage position={logoPos} />
         </Stage>

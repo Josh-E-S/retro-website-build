@@ -7,13 +7,14 @@ import { LogoMark } from "./LogoMark"
  * overlay above the Terminal.
  *
  * Three states:
- *   "hidden"  — not rendered (pre-power-on)
- *   "center"  — large, centered, slow pulse (the "this is the system" beat)
- *   "corner"  — small, top-left, no pulse (constant brand anchor while
- *               Eve speaks and the boot/welcome text fills the stage)
+ *   "hidden"  — not rendered
+ *   "center"  — large, centered, slow heartbeat-style opacity pulse
+ *               (the "this is the system" beat during boot)
+ *   "corner"  — small, tucked top-left out of the text zone,
+ *               constant low opacity, no pulse
  *
- * Transitions are CSS animations on transform + font-size proxies, so the
- * logo smoothly slides and shrinks from center to corner.
+ * Transitions are CSS on top/left/transform so the logo smoothly
+ * slides + shrinks from center to corner over ~1.2s.
  */
 
 export type LogoPosition = "hidden" | "center" | "corner"
@@ -39,26 +40,36 @@ export function LogoStage({ position }: Props) {
       <div
         style={{
           position: "absolute",
-          // Center state sits at 50/50 and scales up. Corner state anchors
-          // the top-left at 32px/32px and scales down.
-          top: isCenter ? "50%" : "32px",
-          left: isCenter ? "50%" : "32px",
+          top: isCenter ? "50%" : "20px",
+          left: isCenter ? "50%" : "20px",
           transform: isCenter
             ? "translate(-50%, -50%) scale(1)"
-            : "translate(0, 0) scale(0.32)",
+            : "translate(0, 0) scale(0.18)",
           transformOrigin: isCenter ? "center center" : "top left",
           transition:
-            "top 1200ms cubic-bezier(0.65, 0, 0.35, 1), left 1200ms cubic-bezier(0.65, 0, 0.35, 1), transform 1200ms cubic-bezier(0.65, 0, 0.35, 1)",
-          animation: isCenter ? "logo-pulse 3.8s ease-in-out infinite" : undefined,
+            "top 1200ms cubic-bezier(0.65, 0, 0.35, 1), left 1200ms cubic-bezier(0.65, 0, 0.35, 1), transform 1200ms cubic-bezier(0.65, 0, 0.35, 1), opacity 800ms ease-out",
+          opacity: isCenter ? 1 : 0.62,
+          animation: isCenter ? "logo-heartbeat 2.4s ease-in-out infinite" : undefined,
+          filter:
+            "drop-shadow(0.6px 0 0 rgba(200, 75, 143, 0.32)) drop-shadow(-0.6px 0 0 rgba(31, 182, 193, 0.3))",
         }}
       >
         <LogoMark variant="display" />
       </div>
 
       <style>{`
-        @keyframes logo-pulse {
-          0%, 100% { opacity: 0.92; filter: drop-shadow(0.6px 0 0 rgba(200, 75, 143, 0.32)) drop-shadow(-0.6px 0 0 rgba(31, 182, 193, 0.3)); }
-          50%       { opacity: 1;    filter: drop-shadow(0.6px 0 0 rgba(200, 75, 143, 0.5))  drop-shadow(-0.6px 0 0 rgba(31, 182, 193, 0.45)); }
+        /*
+         * Heartbeat — a double-thump followed by a longer rest. Each
+         * thump is a quick opacity rise-and-fall; the rest keeps the
+         * logo faintly visible so it never disappears entirely.
+         */
+        @keyframes logo-heartbeat {
+          0%   { opacity: 0.55; }
+          8%   { opacity: 1;    }    /* thump 1 */
+          16%  { opacity: 0.55; }
+          24%  { opacity: 1;    }    /* thump 2 */
+          32%  { opacity: 0.55; }
+          100% { opacity: 0.55; }    /* long rest */
         }
       `}</style>
     </div>

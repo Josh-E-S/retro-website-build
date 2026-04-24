@@ -57,9 +57,11 @@ type Mode = "stanza" | "log"
 
 type Props = {
   onReady: (handle: TerminalHandle) => void
+  /** When true, push content down so the top-left corner logo never overlaps. */
+  avoidCornerLogo?: boolean
 }
 
-export function Terminal({ onReady }: Props) {
+export function Terminal({ onReady, avoidCornerLogo }: Props) {
   const [mode, setMode] = useState<Mode>("stanza")
   const [size, setSize] = useState<StanzaSize>("display")
   const [lines, setLines] = useState<RenderedLine[]>([])
@@ -154,14 +156,21 @@ export function Terminal({ onReady }: Props) {
     <div
       style={{
         position: "absolute",
-        inset: 0,
+        // When the logo is parked top-left, push content down so centered
+        // stanzas never overlap it. Smooth-transition this alongside the
+        // logo's own slide so the two feel coordinated.
+        top: avoidCornerLogo ? "160px" : 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "6vh 8vw",
+        padding: "4vh 8vw",
         opacity: clearing ? 0 : 1,
         transform: clearing ? "translateY(10px)" : "translateY(0)",
-        transition: "opacity 280ms ease-out, transform 280ms ease-out",
+        transition:
+          "opacity 280ms ease-out, transform 280ms ease-out, top 1200ms cubic-bezier(0.65, 0, 0.35, 1)",
         zIndex: 1,
       }}
     >
