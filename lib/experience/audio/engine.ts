@@ -63,6 +63,7 @@ const ONESHOTS = {
 } as const
 
 const PRE_START_LOOP = `${AUDIO_BASE}/CMPTKey-Old_computer_termina-Elevenlabs.mp3`
+const PRE_START_DREAD = `${AUDIO_BASE}/AMBSci-Dark_room_ambience_creepy.mp3`
 
 const MUSIC = {
   lobby: "/audio/music/Unattended_Lobby_entry.mp3",
@@ -80,6 +81,7 @@ const DEFAULT_LAYER_GAIN = {
   eve: 1.0,
   music: 0.45,
   preStart: 0.35,
+  preStartDread: 0.28,
   keystroke: 0.3,
   /** Gain multiplier applied to the music bus while Eve is speaking. */
   musicDuckMul: 0.35,
@@ -298,9 +300,15 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   let musicBuffer: AudioBuffer | null = null
   let musicSource: AudioBufferSourceNode | null = null
 
-  // Pre-start keyboard loop
+  // Pre-start: keyboard loop + dread ambience. Both play through
+  // preStartBus so one fade turns the whole pre-start bed on/off.
   let preStartBuffer: AudioBuffer | null = null
   let preStartSource: AudioBufferSourceNode | null = null
+  let preStartDreadBuffer: AudioBuffer | null = null
+  let preStartDreadSource: AudioBufferSourceNode | null = null
+  const preStartDreadGain = ctx.createGain()
+  preStartDreadGain.gain.value = 0
+  preStartDreadGain.connect(preStartBus)
 
   // Ambient layer handles (deferred until buffers resolve)
   const layers: Partial<Record<
@@ -343,6 +351,14 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
         preStartBuffer = await fetchBuffer(ctx, PRE_START_LOOP)
       } catch (err) {
         console.warn(`[audio] pre-start load failed:`, err)
+      }
+    })()
+
+    const preStartDreadPromise = (async () => {
+      try {
+        preStartDreadBuffer = await fetchBuffer(ctx, PRE_START_DREAD)
+      } catch (err) {
+        console.warn(`[audio] pre-start dread load failed:`, err)
       }
     })()
 
@@ -408,7 +424,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     // Whine is generated, not loaded — attach it synchronously.
     layers.crtWhine = createCrtWhine(ctx, master, DEFAULT_LAYER_GAIN.crtWhine)
 
-    await Promise.all([...evePromises, ...oneShotPromises, ...ambientPromises, musicPromise, preStartPromise])
+    await Promise.all([...evePromises, ...oneShotPromises, ...ambientPromises, musicPromise, preStartPromise, preStartDreadPromise])
     ready = true
   }
   const preloadPromise = preload()
@@ -494,12 +510,34 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     }
     if (preStartSource) return
     if (ctx.state === "suspended") void ctx.resume()
+
+    // Keyboard-in-another-room loop — routes directly to the preStartBus.
     const src = ctx.createBufferSource()
     src.buffer = preStartBuffer
     src.loop = true
     src.connect(preStartBus)
     src.start()
     preStartSource = src
+
+    // Dread ambience sub-layer — routes through its own sub-gain so the
+    // dread level can differ from the keyboard level while both fade
+    // together with the shared preStartBus on stop.
+    if (preStartDreadBuffer && !preStartDreadSource) {
+      const dread = ctx.createBufferSource()
+      dread.buffer = preStartDreadBuffer
+      dread.loop = true
+      dread.connect(preStartDreadGain)
+      dread.start()
+      preStartDreadSource = dread
+      const nowD = ctx.currentTime
+      preStartDreadGain.gain.cancelScheduledValues(nowD)
+      preStartDreadGain.gain.setValueAtTime(preStartDreadGain.gain.value, nowD)
+      preStartDreadGain.gain.linearRampToValueAtTime(
+        DEFAULT_LAYER_GAIN.preStartDread,
+        nowD + fadeMs / 1000,
+      )
+    }
+
     const now = ctx.currentTime
     preStartBus.gain.cancelScheduledValues(now)
     preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
@@ -511,11 +549,19 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     preStartBus.gain.cancelScheduledValues(now)
     preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
     preStartBus.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
+    preStartDreadGain.gain.cancelScheduledValues(now)
+    preStartDreadGain.gain.setValueAtTime(preStartDreadGain.gain.value, now)
+    preStartDreadGain.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
     window.setTimeout(() => {
       if (preStartSource) {
         try { preStartSource.stop() } catch { /* noop */ }
         try { preStartSource.disconnect() } catch { /* noop */ }
         preStartSource = null
+      }
+      if (preStartDreadSource) {
+        try { preStartDreadSource.stop() } catch { /* noop */ }
+        try { preStartDreadSource.disconnect() } catch { /* noop */ }
+        preStartDreadSource = null
       }
     }, fadeMs + 60)
   }
@@ -602,6 +648,12 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       try { preStartSource.disconnect() } catch { /* noop */ }
       preStartSource = null
     }
+    if (preStartDreadSource) {
+      try { preStartDreadSource.stop() } catch { /* noop */ }
+      try { preStartDreadSource.disconnect() } catch { /* noop */ }
+      preStartDreadSource = null
+    }
+    try { preStartDreadGain.disconnect() } catch { /* noop */ }
     for (const layer of Object.values(layers)) {
       if (layer) layer.dispose()
     }
