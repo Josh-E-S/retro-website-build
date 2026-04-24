@@ -74,8 +74,14 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
   const linesRef = useRef<RenderedLine[]>([])
   linesRef.current = lines
 
+  const modeRef = useRef<Mode>("stanza")
+  modeRef.current = mode
+
   const keystrokeRef = useRef<((kind: "short" | "long") => void) | undefined>(undefined)
   keystrokeRef.current = onKeystroke
+
+  const onReadyRef = useRef(onReady)
+  onReadyRef.current = onReady
 
   useEffect(() => {
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
@@ -146,7 +152,7 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
       pushLog: (line, cps) =>
         enqueue(async () => {
           // Switching into log mode clears any stanza on screen first.
-          if (mode !== "log") {
+          if (modeRef.current !== "log") {
             if (linesRef.current.length > 0) await fadeOutCurrent()
             setMode("log")
           }
@@ -177,8 +183,12 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
       clear: () => enqueue(fadeOutCurrent),
       showBlinkingCursor: (on: boolean) => setCursorVisible(on),
     }
-    onReady(handle)
-  }, [mode, onReady])
+    onReadyRef.current(handle)
+    // Intentionally empty deps — the handle and its queue must live for
+    // the full lifetime of the component. If this re-ran on re-render,
+    // each new handle would start its own parallel chain, causing
+    // overlapping typewriter animations and stacked keystroke sounds.
+  }, [])
 
   useEffect(() => {
     if (!cursorVisible) return
