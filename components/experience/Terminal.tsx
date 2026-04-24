@@ -3,33 +3,46 @@
 import { useEffect, useRef, useState } from "react"
 
 /*
- * Terminal — the typewriter surface inside the CRT.
+ * Terminal — the CRT's text surface.
  *
- * Exposes an imperative-ish API through props: the parent (Experience) calls
- * `pushTypewriter` / `clearScreen` / `setCenteredBlock` via a ref when cues
- * fire. Each rendered line is a string; typewriter progress lives in state.
+ * Two rendering modes:
  *
- * Left-aligned blocks stack from the top. Centered blocks replace the
- * visible lines (welcome screen). A clear cue fades the current content
- * out with a 10px vertical roll, then the next block starts from a clean
- * surface.
+ *   "stanza" — large, centered horizontally+vertically. One stanza on
+ *              screen at a time; each new stanza replaces the previous
+ *              with a short fade/roll between them. Used for the boot
+ *              header, welcome screen, and every line Eve speaks.
+ *
+ *   "log"    — small, left-aligned, stacks downward. Used only for the
+ *              boot checklist (MEMORY / NETWORK / AUDIO / TELEMETRY /
+ *              SESSION / INITIALIZING). Contrasts against the stanza
+ *              mode to sell the "computer vs. broadcast" distinction.
+ *
+ * Imperative-ish API via TerminalHandle so the Experience dispatcher
+ * can drive it cue by cue.
  */
 
 export type TerminalLine = {
   id: string
   text: string
-  centered?: boolean
-  // Per-character timing overrides expressed as a map of charIndex → ms
-  // added to that character's base delay. Used for the intentional
-  // irregularities (ONLINE 150ms hitch, 848 digit pacing).
+  /** Per-character extra delay (ms) keyed by 0-based index. */
   charDelays?: Record<number, number>
 }
 
+export type StanzaSize = "display" | "body"
+
 export type TerminalHandle = {
-  typewriter: (lines: TerminalLine[], cps: number, holdAfterMs?: number) => Promise<void>
+  /** Show a single stanza, replacing whatever is on screen. Returns when typed. */
+  stanza: (
+    lines: TerminalLine[],
+    opts: { cps: number; size?: StanzaSize; holdAfterMs?: number },
+  ) => Promise<void>
+  /** Append a log line to the small-log stack (no clear). */
+  pushLog: (line: TerminalLine, cps: number) => Promise<void>
+  /** Dots cycle on the last log line (for INITIALIZING ... loop). */
+  cycleDotsOnLastLog: (base: string, durationMs: number) => Promise<void>
+  /** Clear the screen with a short vertical-roll fade. */
   clear: () => Promise<void>
-  setCenteredBlock: (lines: TerminalLine[], cps: number) => Promise<void>
-  showProcessingDots: (base: string, ms: number) => Promise<void>
+  /** Turn the 1Hz blinking cursor on/off. Appears under the current stanza/log. */
   showBlinkingCursor: (on: boolean) => void
 }
 
@@ -37,34 +50,35 @@ type RenderedLine = {
   id: string
   text: string
   visibleChars: number
-  centered: boolean
   total: number
 }
+
+type Mode = "stanza" | "log"
 
 type Props = {
   onReady: (handle: TerminalHandle) => void
 }
 
 export function Terminal({ onReady }: Props) {
+  const [mode, setMode] = useState<Mode>("stanza")
+  const [size, setSize] = useState<StanzaSize>("display")
   const [lines, setLines] = useState<RenderedLine[]>([])
   const [clearing, setClearing] = useState(false)
   const [cursorVisible, setCursorVisible] = useState(false)
   const [cursorBlink, setCursorBlink] = useState(true)
 
-  // Ref for the handle — we want a stable object the parent can call.
-  const handleRef = useRef<TerminalHandle | null>(null)
   const linesRef = useRef<RenderedLine[]>([])
   linesRef.current = lines
 
   useEffect(() => {
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
-    const typeLine = async (line: TerminalLine, cps: number): Promise<void> => {
+    const appendLineAnimated = async (line: TerminalLine, cps: number) => {
       const perChar = 1000 / cps
       const total = line.text.length
       setLines((prev) => [
         ...prev,
-        { id: line.id, text: line.text, visibleChars: 0, centered: !!line.centered, total },
+        { id: line.id, text: line.text, visibleChars: 0, total },
       ])
       for (let i = 1; i <= total; i++) {
         const extra = line.charDelays?.[i - 1] ?? 0
@@ -75,100 +89,141 @@ export function Terminal({ onReady }: Props) {
       }
     }
 
+    const fadeOutCurrent = async () => {
+      setClearing(true)
+      await sleep(280)
+      setLines([])
+      setClearing(false)
+    }
+
     const handle: TerminalHandle = {
-      typewriter: async (newLines, cps, holdAfterMs) => {
+      stanza: async (newLines, opts) => {
+        setMode("stanza")
+        setSize(opts.size ?? "display")
+        // Replace whatever is on screen with a brief fade first.
+        if (linesRef.current.length > 0) await fadeOutCurrent()
         for (const line of newLines) {
-          await typeLine(line, cps)
+          await appendLineAnimated(line, opts.cps)
         }
-        if (holdAfterMs) await sleep(holdAfterMs)
+        if (opts.holdAfterMs) await sleep(opts.holdAfterMs)
       },
-      clear: async () => {
-        setClearing(true)
-        await sleep(300)
-        setLines([])
-        setClearing(false)
-      },
-      setCenteredBlock: async (newLines, cps) => {
-        setLines([])
-        for (const line of newLines) {
-          await typeLine({ ...line, centered: true }, cps)
+      pushLog: async (line, cps) => {
+        // Switching into log mode clears any stanza on screen first.
+        if (mode !== "log") {
+          if (linesRef.current.length > 0) await fadeOutCurrent()
+          setMode("log")
         }
+        await appendLineAnimated(line, cps)
       },
-      showProcessingDots: async (base, ms) => {
-        const id = `dots_${base}`
+      cycleDotsOnLastLog: async (base, durationMs) => {
+        const last = linesRef.current[linesRef.current.length - 1]
+        if (!last) return
+        const id = last.id
+        const variants = ["", ".", "..", "..."]
         const start = performance.now()
-        // If a line with this id already exists, drive it. Otherwise create it.
-        setLines((prev) => {
-          if (prev.some((l) => l.id === id)) return prev
-          return [...prev, { id, text: base, visibleChars: base.length, centered: false, total: base.length }]
-        })
-        const variants = [".", "..", "..."]
-        let idx = 0
-        while (performance.now() - start < ms) {
-          const dots = variants[idx % variants.length]
-          const text = base + " " + dots
+        let i = 0
+        while (performance.now() - start < durationMs) {
+          const dots = variants[i % variants.length]
+          const text = base + (dots ? " " + dots : "")
           setLines((prev) =>
             prev.map((l) =>
               l.id === id ? { ...l, text, visibleChars: text.length, total: text.length } : l,
             ),
           )
-          idx += 1
+          i += 1
           await sleep(300)
         }
       },
-      showBlinkingCursor: (on: boolean) => {
-        setCursorVisible(on)
-      },
+      clear: fadeOutCurrent,
+      showBlinkingCursor: (on: boolean) => setCursorVisible(on),
     }
-    handleRef.current = handle
     onReady(handle)
-  }, [onReady])
+  }, [mode, onReady])
 
-  // Cursor blink at 1Hz.
   useEffect(() => {
     if (!cursorVisible) return
     const id = window.setInterval(() => setCursorBlink((v) => !v), 500)
     return () => window.clearInterval(id)
   }, [cursorVisible])
 
+  // Shared text color & per-mode typography.
+  const stanzaFontSize = size === "display" ? "clamp(36px, 6vw, 80px)" : "clamp(22px, 2.4vw, 34px)"
+  const stanzaLineHeight = size === "display" ? 1.1 : 1.35
+
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
-        padding: "48px 56px",
-        fontFamily: "var(--terminal-font)",
-        fontSize: "16px",
-        lineHeight: 1.5,
-        letterSpacing: "0.02em",
-        transform: clearing ? "translateY(10px)" : "translateY(0)",
+        display: mode === "stanza" ? "flex" : "block",
+        alignItems: mode === "stanza" ? "center" : undefined,
+        justifyContent: mode === "stanza" ? "center" : undefined,
+        padding: mode === "stanza" ? "6vh 8vw" : "6vh 8vw",
         opacity: clearing ? 0 : 1,
-        transition: "transform 300ms ease-out, opacity 300ms ease-out",
+        transform: clearing ? "translateY(10px)" : "translateY(0)",
+        transition: "opacity 280ms ease-out, transform 280ms ease-out",
         zIndex: 1,
       }}
     >
-      {lines.map((l) => (
+      {mode === "stanza" ? (
         <div
-          key={l.id}
           style={{
-            textAlign: l.centered ? "center" : "left",
+            textAlign: "center",
+            fontFamily: "var(--display-font)",
+            fontSize: stanzaFontSize,
+            lineHeight: stanzaLineHeight,
+            letterSpacing: "0.01em",
+            color: "var(--ink)",
+            maxWidth: "24ch",
+            textWrap: "balance" as never,
+          }}
+        >
+          {lines.map((l) => (
+            <div key={l.id} style={{ whiteSpace: "pre-wrap" }}>
+              {l.text.slice(0, l.visibleChars)}
+              {l.visibleChars < l.total && <span style={{ opacity: 0.5 }}>▋</span>}
+            </div>
+          ))}
+          {cursorVisible && lines.length > 0 && !clearing && (
+            <div
+              style={{
+                opacity: cursorBlink ? 1 : 0,
+                transition: "opacity 80ms linear",
+                marginTop: "0.4em",
+                fontSize: "0.6em",
+              }}
+            >
+              ▋
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            fontFamily: "var(--terminal-font)",
+            fontSize: "16px",
+            lineHeight: 1.6,
+            letterSpacing: "0.02em",
+            color: "var(--ink-soft)",
             whiteSpace: "pre",
           }}
         >
-          {l.text.slice(0, l.visibleChars)}
-          {l.visibleChars < l.total && <span style={{ opacity: 0.6 }}>▋</span>}
-        </div>
-      ))}
-      {cursorVisible && lines.length > 0 && !clearing && (
-        <div
-          style={{
-            textAlign: lines[lines.length - 1]?.centered ? "center" : "left",
-            opacity: cursorBlink ? 1 : 0,
-            transition: "opacity 80ms linear",
-            marginTop: "4px",
-          }}
-        >
-          ▋
+          {lines.map((l) => (
+            <div key={l.id}>
+              {l.text.slice(0, l.visibleChars)}
+              {l.visibleChars < l.total && <span style={{ opacity: 0.5 }}>▋</span>}
+            </div>
+          ))}
+          {cursorVisible && lines.length > 0 && !clearing && (
+            <div
+              style={{
+                opacity: cursorBlink ? 1 : 0,
+                transition: "opacity 80ms linear",
+              }}
+            >
+              ▋
+            </div>
+          )}
         </div>
       )}
     </div>

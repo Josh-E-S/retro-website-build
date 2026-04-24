@@ -103,7 +103,7 @@ export function Wakeup({ onUnlock }: Props) {
         position: "fixed",
         inset: 0,
         background: "#000",
-        color: "var(--phosphor)",
+        color: "var(--terminal-dim)",
         fontFamily: "var(--terminal-font)",
         fontSize: "14px",
         lineHeight: 1.4,

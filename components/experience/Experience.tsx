@@ -15,13 +15,14 @@ import { sequence, type Cue } from "@/lib/experience/sequence"
  *   "running" — Stage mounted; clock drives cues into Terminal + visual state
  *
  * Cue dispatch:
- *   - Sorted sequence is walked with a cursor pointer.
- *   - Each tick, fire every cue whose t has been crossed since last tick.
- *   - Visual cues (typewriter/welcome/processing_dots/screen_clear/cursor_blink)
- *     route into the Terminal via its handle.
- *   - Power-on cue flips the Stage's poweredOn prop.
- *   - Audio cues are no-ops until Phase 3.
- *   - eve_line renders a caption placeholder (silent preview).
+ *   - stanza       → Terminal.stanza (large centered, replaces screen)
+ *   - log_line     → Terminal.pushLog (small left-aligned stack)
+ *   - log_dots     → Terminal.cycleDotsOnLastLog
+ *   - clear        → Terminal.clear
+ *   - cursor_blink → Terminal.showBlinkingCursor
+ *   - eve_line     → Terminal.stanza (no audio yet — Phase 3)
+ *   - crt_power_on → Stage poweredOn
+ *   - audio / ambient_*  → no-ops until Phase 3
  */
 
 type Phase = "wakeup" | "running"
@@ -29,7 +30,6 @@ type Phase = "wakeup" | "running"
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("wakeup")
   const [poweredOn, setPoweredOn] = useState(false)
-  const [caption, setCaption] = useState<string | null>(null)
   const terminalRef = useRef<TerminalHandle | null>(null)
   const cursorRef = useRef(0)
 
@@ -39,34 +39,35 @@ export function Experience() {
       case "crt_power_on":
         setPoweredOn(true)
         break
-      case "typewriter":
-        if (term) void term.typewriter(cue.lines, cue.cps, cue.holdAfterMs)
+      case "stanza":
+        if (term) void term.stanza(cue.lines, {
+          cps: cue.cps,
+          size: cue.size,
+          holdAfterMs: cue.holdAfterMs,
+        })
         break
-      case "processing_dots":
-        if (term) void term.showProcessingDots(cue.base, cue.durationMs)
+      case "log_line":
+        if (term) void term.pushLog(cue.line, cue.cps)
         break
-      case "screen_clear":
+      case "log_dots":
+        if (term) void term.cycleDotsOnLastLog(cue.base, cue.durationMs)
+        break
+      case "clear":
         if (term) void term.clear()
-        break
-      case "welcome_block":
-        if (term) void term.setCenteredBlock(cue.lines, cue.cps)
         break
       case "cursor_blink":
         if (term) term.showBlinkingCursor(cue.on)
         break
       case "eve_line":
-        setCaption(cue.caption)
-        // Simulate Eve's line duration — rough estimate until real audio lands.
-        // Clear caption after a while so it doesn't stay forever.
-        window.setTimeout(
-          () => setCaption((c) => (c === cue.caption ? null : c)),
-          Math.min(18000, 2500 + cue.caption.length * 55),
+        if (term) void term.stanza(
+          cue.textLines.map((text, i) => ({ id: `${cue.id}_${i}`, text })),
+          { cps: cue.cps, size: "display", holdAfterMs: cue.holdAfterMs },
         )
         break
       case "audio":
       case "ambient_start":
       case "ambient_dip":
-        // Stubbed until audio engine lands.
+        // Stubbed until Phase 3 audio engine.
         break
     }
     // eslint-disable-next-line no-console
@@ -104,28 +105,6 @@ export function Experience() {
       {phase === "running" && (
         <Stage poweredOn={poweredOn}>
           <Terminal onReady={handleTerminalReady} />
-          {caption && (
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: "48px",
-                padding: "0 56px",
-                fontFamily: "var(--terminal-font)",
-                fontSize: "14px",
-                lineHeight: 1.5,
-                textAlign: "center",
-                color: "var(--phosphor)",
-                opacity: 0.9,
-                zIndex: 2,
-                maxWidth: "80ch",
-                margin: "0 auto",
-              }}
-            >
-              {caption}
-            </div>
-          )}
         </Stage>
       )}
     </main>

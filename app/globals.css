@@ -3,17 +3,22 @@
 /*
  * The Ablation Study — base reset.
  *
- * The entire experience lives inside <Experience />. This file intentionally
- * sets only the global surface: black viewport, no chrome, no cursor, no
- * scroll. Anything visual that a player can see is owned by a component,
- * not by this stylesheet.
+ * Palette: cream/ink. Choice Industries presents itself as an institution,
+ * not a spaceship — paper, forms, bureaucratic calm. The CRT in this world
+ * is a desk terminal in an office, not a console on a ship.
  */
 
 :root {
-  --phosphor: #33ff66;
-  --phosphor-glow: rgba(51, 255, 102, 0.4);
-  --terminal-dim: #333333;
+  --paper: #ece8dc;
+  --paper-deep: #dfd9c8;
+  --ink: #1f2a37;
+  --ink-soft: #2e3a48;
+  --ink-muted: #5b6a7b;
+  --accent: #6f8ea8;
+  --accent-soft: rgba(111, 142, 168, 0.35);
+  --terminal-dim: #8a8578;
   --terminal-font: "Courier New", "Courier Prime", Courier, ui-monospace, monospace;
+  --display-font: "Courier New", "Courier Prime", Courier, ui-monospace, monospace;
 }
 
 *,
@@ -30,18 +35,16 @@ body {
   height: 100vh;
   overflow: hidden;
   background: #000000;
-  color: var(--phosphor);
+  color: var(--ink);
   font-family: var(--terminal-font);
   cursor: none;
 }
 
-/* Prevent iOS text size adjust from nudging the terminal font. */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-/* No selection highlights — the experience is not a document. */
 ::selection {
   background: transparent;
   color: inherit;

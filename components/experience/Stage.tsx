@@ -6,21 +6,20 @@ import { AnimatedNoise } from "./AnimatedNoise"
 /*
  * Stage — the CRT frame the post-unlock experience lives inside.
  *
- * Layer stack, back to front:
- *   1. Phosphor backdrop (near-black with faint green cast)
- *   2. children (the terminal renders here)
- *   3. Scanlines (repeating horizontal dark lines)
- *   4. Rolling interlace band (drifts up every ~8s)
- *   5. Random single-frame tear (~once every 30s)
- *   6. Animated noise grain
- *   7. Corner vignette
- *   8. Chromatic aberration is achieved via a CSS filter on the whole
- *      container so red/blue fringes land on all bright pixels, not
- *      manually per-element.
+ * Palette: cream/ink. Choice Industries reads as institutional, not
+ * spaceship. The CRT is a desk terminal in an office. Scanlines are
+ * subtle dark ink bands over paper, the glow is a soft ink smudge,
+ * and the "chromatic aberration" is a print-offset registration shift
+ * (cyan/magenta) rather than phosphor fringes.
  *
- * Power-on animation: the whole viewport opens from a single pixel
- *   → horizontal line → rectangle → full screen over ~450ms. Controlled
- *   by the `poweredOn` prop so the parent can gate it on a cue.
+ * Layer stack:
+ *   1. Paper backdrop (warm radial wash)
+ *   2. children (terminal)
+ *   3. Scanlines (subtle dark ink bands, multiply)
+ *   4. Rolling interlace band (soft brightening drift every ~8s)
+ *   5. Occasional screen tear
+ *   6. Animated noise (paper grain)
+ *   7. Corner vignette
  */
 
 type Props = {
@@ -29,7 +28,6 @@ type Props = {
 }
 
 export function Stage({ poweredOn, children }: Props) {
-  // Rolling band: drifts from bottom to top over ~1.6s, every ~8s.
   const [bandKey, setBandKey] = useState(0)
   useEffect(() => {
     if (!poweredOn) return
@@ -39,7 +37,6 @@ export function Stage({ poweredOn, children }: Props) {
     return () => window.clearInterval(id)
   }, [poweredOn])
 
-  // Screen tear: random single-frame horizontal shift, ~once every 30s.
   const [tearY, setTearY] = useState<number | null>(null)
   useEffect(() => {
     if (!poweredOn) return
@@ -48,7 +45,7 @@ export function Stage({ poweredOn, children }: Props) {
       const delay = 22000 + Math.random() * 16000
       timeoutId = window.setTimeout(() => {
         setTearY(Math.random() * 100)
-        window.setTimeout(() => setTearY(null), 90)
+        window.setTimeout(() => setTearY(null), 80)
         schedule()
       }, delay)
     }
@@ -61,103 +58,105 @@ export function Stage({ poweredOn, children }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "#040604",
+        background: "#000",
         overflow: "hidden",
-        // Chromatic aberration — subtle red/blue fringes.
-        // Applied as a drop-shadow stack on the container so bright pixels
-        // pick up both channels at slight offsets.
-        filter: poweredOn
-          ? "drop-shadow(1px 0 0 rgba(255, 40, 40, 0.35)) drop-shadow(-1px 0 0 rgba(40, 80, 255, 0.35))"
-          : "none",
       }}
     >
-      {/* Power-on clip + brightness. The whole content gets clipped from a
-          single central pixel outward, then brightness ramps up to 1.  */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          clipPath: poweredOn
-            ? "inset(0 0 0 0)"
-            : "inset(50% 50% 50% 50%)",
-          transition: "clip-path 450ms cubic-bezier(0.2, 0.7, 0.2, 1)",
+          clipPath: poweredOn ? "inset(0 0 0 0)" : "inset(50% 50% 50% 50%)",
+          transition: "clip-path 520ms cubic-bezier(0.2, 0.7, 0.2, 1)",
           opacity: poweredOn ? 1 : 0,
-          background: "#040604",
         }}
       >
-        {/* Phosphor glow layer — very soft green wash behind content. */}
+        {/* Paper base */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(ellipse at center, rgba(51, 255, 102, 0.04) 0%, rgba(51, 255, 102, 0) 60%)",
-            pointerEvents: "none",
+              "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55) 0%, transparent 55%), radial-gradient(ellipse at 50% 110%, var(--paper-deep) 0%, var(--paper) 60%)",
           }}
         />
 
-        {/* Content layer */}
+        {/* Content layer. Print-registration offset gives a subtle CMYK
+            ghost on body text without the phosphor-style glow of green CRTs. */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            color: "var(--phosphor)",
+            color: "var(--ink)",
             textShadow:
-              "0 0 4px rgba(51, 255, 102, 0.6), 0 0 12px rgba(51, 255, 102, 0.25)",
-            transform: tearY !== null ? "translateX(6px)" : "translateX(0)",
+              "0.6px 0 0 rgba(200, 75, 143, 0.32), -0.6px 0 0 rgba(31, 182, 193, 0.3)",
+            transform: tearY !== null ? "translateX(4px)" : "translateX(0)",
             transition: tearY !== null ? "none" : "transform 120ms",
           }}
         >
           {children}
         </div>
 
-        {/* Scanlines */}
+        {/* Scanlines — dark ink bands, multiplied so they stay subtle on paper. */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             pointerEvents: "none",
             backgroundImage:
-              "repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.45) 2px, rgba(0,0,0,0.45) 3px)",
+              "repeating-linear-gradient(to bottom, rgba(31,42,55,0.09) 0px, rgba(31,42,55,0.09) 1px, transparent 1px, transparent 3px)",
             mixBlendMode: "multiply",
             zIndex: 2,
           }}
         />
 
-        {/* Rolling interlace band */}
+        {/* Rolling band — soft brightening wash drifting up. */}
         <div
           key={bandKey}
           style={{
             position: "absolute",
             left: 0,
             right: 0,
-            height: "60px",
+            height: "80px",
             pointerEvents: "none",
             background:
-              "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.035) 50%, rgba(255,255,255,0) 100%)",
+              "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0) 100%)",
             mixBlendMode: "screen",
             zIndex: 3,
-            animation: "crt-band-drift 1800ms linear",
+            animation: "crt-band-drift 2200ms linear",
             top: "100%",
           }}
         />
 
-        {/* Noise grain */}
-        <AnimatedNoise opacity={0.08} />
+        {/* Noise — paper grain */}
+        <AnimatedNoise opacity={0.05} />
 
-        {/* Vignette */}
+        {/* Vignette — warm ink corners */}
         <div
           style={{
             position: "absolute",
             inset: 0,
             pointerEvents: "none",
             background:
-              "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.45) 100%)",
+              "radial-gradient(ellipse at center, transparent 55%, rgba(31,42,55,0.14) 90%, rgba(31,42,55,0.26) 100%)",
             zIndex: 4,
           }}
         />
 
-        {/* Screen tear overlay */}
+        {/* Subtle flicker — near-imperceptible */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 5,
+            background: "rgba(255,255,255,0)",
+            animation: "crt-flicker 5.3s infinite steps(1)",
+            mixBlendMode: "multiply",
+          }}
+        />
+
+        {/* Tear line */}
         {tearY !== null && (
           <div
             style={{
@@ -165,11 +164,11 @@ export function Stage({ poweredOn, children }: Props) {
               left: 0,
               right: 0,
               top: `${tearY}%`,
-              height: "2px",
-              background: "rgba(51, 255, 102, 0.8)",
-              boxShadow: "0 0 8px rgba(51, 255, 102, 0.6)",
+              height: "1px",
+              background: "rgba(31,42,55,0.5)",
+              boxShadow: "0 0 6px rgba(31,42,55,0.35)",
               pointerEvents: "none",
-              zIndex: 5,
+              zIndex: 6,
             }}
           />
         )}
@@ -178,7 +177,16 @@ export function Stage({ poweredOn, children }: Props) {
       <style>{`
         @keyframes crt-band-drift {
           from { top: 100%; }
-          to   { top: -60px; }
+          to   { top: -80px; }
+        }
+        @keyframes crt-flicker {
+          0%, 100% { background: rgba(255,255,255,0); }
+          47% { background: rgba(255,255,255,0); }
+          48% { background: rgba(31,42,55,0.04); }
+          49% { background: rgba(255,255,255,0); }
+          72% { background: rgba(255,255,255,0); }
+          73% { background: rgba(255,255,255,0.05); }
+          74% { background: rgba(255,255,255,0); }
         }
       `}</style>
     </div>
