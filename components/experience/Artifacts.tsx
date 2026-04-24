@@ -119,15 +119,15 @@ const SYMBOLS_BY_KIND = { heart: SYMBOL_HEART, x: SYMBOL_X, robot: SYMBOL_ROBOT 
 
 function buildTetris(id: number): Tetris {
   const shape = TETRIS_SHAPES[Math.floor(Math.random() * TETRIS_SHAPES.length)]
-  const cellSize = 2 + Math.floor(Math.random() * 3)
+  const cellSize = 2 + Math.floor(Math.random() * 4) // 2–5px (old V2)
   return {
     id,
     top: Math.random() * 96,
     left: Math.random() * 96,
     cells: shape,
     cellSize,
-    ttl: 220 + Math.random() * 360,
-    opacity: 0.25 + Math.random() * 0.25,
+    ttl: 180 + Math.random() * 280,
+    opacity: 0.35 + Math.random() * 0.3,
   }
 }
 
@@ -185,7 +185,11 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
     if (ambientActiveRef.current) return
     ambientActiveRef.current = true
 
-    const scheduleOne = (initialDelay: number) => {
+    // ─ Tetris ambient: 4 independent schedulers staggered over the first
+    //   few seconds. Each runs forever at its own irregular cadence (1.2–4s),
+    //   so at any moment 0–3 blocks are live across different parts of the
+    //   screen. Matches the old V2 density.
+    const scheduleTetris = (initialDelay: number) => {
       const run = () => {
         if (!ambientActiveRef.current) return
         const block = buildTetris(nextIdRef.current++)
@@ -194,23 +198,63 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
           setTetris((prev) => prev.filter((b) => b.id !== block.id))
         }, block.ttl + 40)
         ambientTimersRef.current.push(cleanup)
-        const next = setTimeout(run, 1800 + Math.random() * 3200)
+        const next = setTimeout(run, 1200 + Math.random() * 2800)
         ambientTimersRef.current.push(next)
       }
       const start = setTimeout(run, initialDelay)
       ambientTimersRef.current.push(start)
     }
-
-    // 2 independent schedulers so at most 1–2 tetris blocks are live at once.
-    for (let i = 0; i < 2; i++) {
-      scheduleOne(900 + i * 1400 + Math.random() * 900)
+    for (let i = 0; i < 4; i++) {
+      scheduleTetris(700 + i * 650 + Math.random() * 800)
     }
+
+    // ─ Symbols: rare, deliberate. A heart/X/robot drifts in every
+    //   14–24 seconds on its own schedule, on top of any cue-fired ones.
+    const kinds: Array<"heart" | "x" | "robot"> = ["heart", "x", "robot"]
+    const scheduleSymbol = () => {
+      const run = () => {
+        if (!ambientActiveRef.current) return
+        const kind = kinds[Math.floor(Math.random() * kinds.length)]
+        const sym = buildSymbol(nextIdRef.current++, kind)
+        setSymbols((prev) => [...prev, sym])
+        const cleanup = setTimeout(() => {
+          setSymbols((prev) => prev.filter((s) => s.id !== sym.id))
+        }, sym.ttl + 80)
+        ambientTimersRef.current.push(cleanup)
+        const next = setTimeout(run, 14000 + Math.random() * 10000)
+        ambientTimersRef.current.push(next)
+      }
+      const start = setTimeout(run, 9000 + Math.random() * 6000)
+      ambientTimersRef.current.push(start)
+    }
+    scheduleSymbol()
+
+    // ─ Subtle clumps: faint morse-ish patterns every 7–14 seconds. Not
+    //   loud enough to read as glitch — just background texture.
+    const scheduleClump = () => {
+      const run = () => {
+        if (!ambientActiveRef.current) return
+        const c = buildClump(nextIdRef.current++, { subtle: true })
+        setClumps((prev) => [...prev, c])
+        const cleanup = setTimeout(() => {
+          setClumps((prev) => prev.filter((x) => x.id !== c.id))
+        }, c.ttl + 60)
+        ambientTimersRef.current.push(cleanup)
+        const next = setTimeout(run, 7000 + Math.random() * 7000)
+        ambientTimersRef.current.push(next)
+      }
+      const start = setTimeout(run, 4000 + Math.random() * 3000)
+      ambientTimersRef.current.push(start)
+    }
+    scheduleClump()
   }, [])
 
   const stopAmbient = useCallback(() => {
     ambientActiveRef.current = false
     cleanupAmbient()
     setTetris([])
+    setSymbols([])
+    setClumps([])
   }, [cleanupAmbient])
 
   const fireGlitch = useCallback((intensity: "normal" | "hard" = "normal") => {
@@ -293,6 +337,8 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             top: `${t.top}%`,
             left: `${t.left}%`,
             opacity: t.opacity,
+            filter:
+              "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.4)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.4))",
           }}
         >
           {t.cells.map(([r, c], i) => (
@@ -319,7 +365,9 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             position: "absolute",
             top: `${s.top}%`,
             left: `${s.left}%`,
-            opacity: 0.55,
+            opacity: 0.7,
+            filter:
+              "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.45)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.45))",
           }}
         >
           {s.cells.map(([r, c], i) => (

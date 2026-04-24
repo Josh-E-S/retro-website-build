@@ -44,6 +44,7 @@ export type Cue =
   | { id: string; t: number; type: "glitch"; intensity?: "normal" | "hard" }
   | { id: string; t: number; type: "symbol"; kind?: "heart" | "x" | "robot" }
   | { id: string; t: number; type: "clump"; subtle?: boolean }
+  | { id: string; t: number; type: "logo"; holdMs: number }
 
 export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan"
 
@@ -101,19 +102,8 @@ export const sequence: Cue[] = [
   // t=7.5 — baseline tetris corruption starts running in the background
   { id: "artifacts_on", t: 7.5, type: "artifacts_ambient", on: true },
 
-  // t=8.0 — big centered header stanza
-  {
-    id: "header_stanza",
-    t: 8.0,
-    type: "stanza",
-    lines: [
-      { id: "h_1", text: "CHOICE" },
-      { id: "h_2", text: "INDUSTRIES" },
-    ],
-    cps: 22,
-    size: "display",
-    holdAfterMs: 1200,
-  },
+  // t=8.0 — Choice Industries logo reveals as the header beat
+  { id: "header_logo", t: 8.0, type: "logo", holdMs: 3200 },
 
   // t=11.5 — clear to boot checklist (small log)
   { id: "clear_before_log", t: 11.5, type: "clear" },

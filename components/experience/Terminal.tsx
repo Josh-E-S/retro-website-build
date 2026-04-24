@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { LogoMark } from "./LogoMark"
 
 /*
  * Terminal — the CRT's text surface.
@@ -36,6 +37,8 @@ export type TerminalHandle = {
     lines: TerminalLine[],
     opts: { cps: number; size?: StanzaSize; holdAfterMs?: number },
   ) => Promise<void>
+  /** Reveal the Choice Industries logo, replacing whatever is on screen. */
+  logo: (holdMs: number) => Promise<void>
   /** Append a log line to the small-log stack (no clear). */
   pushLog: (line: TerminalLine, cps: number) => Promise<void>
   /** Dots cycle on the last log line (for INITIALIZING ... loop). */
@@ -53,7 +56,7 @@ type RenderedLine = {
   total: number
 }
 
-type Mode = "stanza" | "log"
+type Mode = "stanza" | "log" | "logo"
 
 type Props = {
   onReady: (handle: TerminalHandle) => void
@@ -107,6 +110,14 @@ export function Terminal({ onReady }: Props) {
         }
         if (opts.holdAfterMs) await sleep(opts.holdAfterMs)
       },
+      logo: async (holdMs: number) => {
+        if (linesRef.current.length > 0) await fadeOutCurrent()
+        setMode("logo")
+        setLines([])
+        // The logo image has its own fade-in via CSS in render. Hold the
+        // requested time, then let the next cue's fadeOutCurrent take over.
+        await sleep(holdMs)
+      },
       pushLog: async (line, cps) => {
         // Switching into log mode clears any stanza on screen first.
         if (mode !== "log") {
@@ -150,22 +161,38 @@ export function Terminal({ onReady }: Props) {
   const stanzaFontSize = size === "display" ? "clamp(36px, 6vw, 80px)" : "clamp(22px, 2.4vw, 34px)"
   const stanzaLineHeight = size === "display" ? 1.1 : 1.35
 
+  const centered = mode === "stanza" || mode === "logo"
+
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
-        display: mode === "stanza" ? "flex" : "block",
-        alignItems: mode === "stanza" ? "center" : undefined,
-        justifyContent: mode === "stanza" ? "center" : undefined,
-        padding: mode === "stanza" ? "6vh 8vw" : "6vh 8vw",
+        display: centered ? "flex" : "block",
+        alignItems: centered ? "center" : undefined,
+        justifyContent: centered ? "center" : undefined,
+        padding: "6vh 8vw",
         opacity: clearing ? 0 : 1,
         transform: clearing ? "translateY(10px)" : "translateY(0)",
         transition: "opacity 280ms ease-out, transform 280ms ease-out",
         zIndex: 1,
       }}
     >
-      {mode === "stanza" ? (
+      {mode === "logo" ? (
+        <div
+          style={{
+            animation: "logo-reveal 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both",
+          }}
+        >
+          <LogoMark variant="display" />
+          <style>{`
+            @keyframes logo-reveal {
+              from { opacity: 0; transform: scale(0.985); filter: blur(6px); }
+              to   { opacity: 1; transform: scale(1); filter: blur(0); }
+            }
+          `}</style>
+        </div>
+      ) : mode === "stanza" ? (
         <div
           style={{
             textAlign: "center",

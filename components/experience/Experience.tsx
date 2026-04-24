@@ -5,6 +5,7 @@ import { Wakeup } from "./Wakeup"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
 import { Artifacts, type ArtifactsHandle } from "./Artifacts"
+import { RecordingMark } from "./RecordingMark"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
 
@@ -75,6 +76,9 @@ export function Experience() {
       case "clump":
         if (art) art.clump({ subtle: cue.subtle })
         break
+      case "logo":
+        if (term) void term.logo(cue.holdMs)
+        break
       case "audio":
       case "ambient_start":
       case "ambient_dip":
@@ -117,6 +121,7 @@ export function Experience() {
         <Stage poweredOn={poweredOn}>
           <Terminal onReady={handleTerminalReady} />
           <Artifacts ref={artifactsRef} />
+          <RecordingMark />
         </Stage>
       )}
     </main>
