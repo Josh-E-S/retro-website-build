@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audio/engine"
 
 /*
  * Wakeup — the unlock gate.
@@ -17,7 +18,7 @@ import { useEffect, useRef, useState } from "react"
  */
 
 type Props = {
-  onUnlock: (responseLatencyMs: number) => void
+  onUnlock: (responseLatencyMs: number, audio: AudioEngineHandle) => void
 }
 
 const LATENCY_STORAGE_KEY = "ablation_response_latency_ms"
@@ -37,7 +38,13 @@ export function Wakeup({ onUnlock }: Props) {
     }
     setPressed(true)
     setUnlocked(true)
-    window.setTimeout(() => onUnlock(latency), 900)
+    // Create the AudioContext inside the user gesture — Safari requires
+    // it, Chrome allows deferred creation but the synchronous path is
+    // safer. Preload runs asynchronously inside the engine.
+    const audioPromise = createAudioEngine()
+    audioPromise.then((audio) => {
+      window.setTimeout(() => onUnlock(latency, audio), 900)
+    })
   }
 
   useEffect(() => {

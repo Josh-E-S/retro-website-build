@@ -8,6 +8,7 @@ import { Artifacts, type ArtifactsHandle } from "./Artifacts"
 import { LogoStage, type LogoPosition as LogoStatePosition } from "./LogoStage"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
+import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audio/engine"
 
 /*
  * Experience — top-level client component.
@@ -25,6 +26,7 @@ export function Experience() {
   const [logoPos, setLogoPos] = useState<LogoStatePosition>("hidden")
   const terminalRef = useRef<TerminalHandle | null>(null)
   const artifactsRef = useRef<ArtifactsHandle | null>(null)
+  const audioRef = useRef<AudioEngineHandle | null>(null)
   const cursorRef = useRef(0)
 
   const handleCue = useCallback((cue: Cue) => {
@@ -55,6 +57,10 @@ export function Experience() {
           cue.textLines.map((text, i) => ({ id: `${cue.id}_${i}`, text })),
           { cps: cue.cps, size: "display", holdAfterMs: cue.holdAfterMs },
         )
+        // Play the matching Eve voice MP3. The audio engine drops the call
+        // silently if the buffer isn't ready or the file is missing, so
+        // this never blocks the on-screen text from rendering.
+        if (audioRef.current) audioRef.current.playEve(cue.id)
         break
       case "artifacts_ambient":
         if (art) (cue.on ? art.ambient.start() : art.ambient.stop())
@@ -98,8 +104,19 @@ export function Experience() {
     return () => clock.stop()
   }, [phase, handleCue])
 
-  const handleUnlock = useCallback(() => {
+  const handleUnlock = useCallback((_latencyMs: number, audio: AudioEngineHandle) => {
+    audioRef.current = audio
     setPhase("running")
+  }, [])
+
+  // Dispose the audio engine when the component tears down.
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.dispose()
+        audioRef.current = null
+      }
+    }
   }, [])
 
   const handleTerminalReady = useCallback((h: TerminalHandle) => {

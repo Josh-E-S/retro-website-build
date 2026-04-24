@@ -75,8 +75,27 @@ export function Terminal({ onReady, avoidCornerLogo }: Props) {
   useEffect(() => {
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
+    // Global typing speed scale. 1.0 = sequence-declared cps; >1 slows
+    // typing proportionally. Kept here as a single tuning knob so the
+    // sequence file doesn't need a sweep every time we retune tempo.
+    const TYPING_SLOWDOWN = 2.0
+
+    // Serial queue — ensures typewriter cues fire one after the other
+    // even when the dispatcher schedules them with overlapping timings.
+    // Without this, slowing TYPING_SLOWDOWN causes consecutive lines to
+    // animate in parallel and interleave visually.
+    let chain: Promise<void> = Promise.resolve()
+    const enqueue = <T,>(fn: () => Promise<T>): Promise<T> => {
+      const next = chain.then(fn)
+      chain = next.then(
+        () => undefined,
+        () => undefined,
+      )
+      return next
+    }
+
     const appendLineAnimated = async (line: TerminalLine, cps: number) => {
-      const perChar = 1000 / cps
+      const perChar = (1000 / cps) * TYPING_SLOWDOWN
       const total = line.text.length
       setLines((prev) => [
         ...prev,
@@ -99,44 +118,49 @@ export function Terminal({ onReady, avoidCornerLogo }: Props) {
     }
 
     const handle: TerminalHandle = {
-      stanza: async (newLines, opts) => {
-        setMode("stanza")
-        setSize(opts.size ?? "display")
-        // Replace whatever is on screen with a brief fade first.
-        if (linesRef.current.length > 0) await fadeOutCurrent()
-        for (const line of newLines) {
-          await appendLineAnimated(line, opts.cps)
-        }
-        if (opts.holdAfterMs) await sleep(opts.holdAfterMs)
-      },
-      pushLog: async (line, cps) => {
-        // Switching into log mode clears any stanza on screen first.
-        if (mode !== "log") {
+      stanza: (newLines, opts) =>
+        enqueue(async () => {
+          setMode("stanza")
+          setSize(opts.size ?? "display")
+          // Replace whatever is on screen with a brief fade first.
           if (linesRef.current.length > 0) await fadeOutCurrent()
-          setMode("log")
-        }
-        await appendLineAnimated(line, cps)
-      },
-      cycleDotsOnLastLog: async (base, durationMs) => {
-        const last = linesRef.current[linesRef.current.length - 1]
-        if (!last) return
-        const id = last.id
-        const variants = ["", ".", "..", "..."]
-        const start = performance.now()
-        let i = 0
-        while (performance.now() - start < durationMs) {
-          const dots = variants[i % variants.length]
-          const text = base + (dots ? " " + dots : "")
-          setLines((prev) =>
-            prev.map((l) =>
-              l.id === id ? { ...l, text, visibleChars: text.length, total: text.length } : l,
-            ),
-          )
-          i += 1
-          await sleep(300)
-        }
-      },
-      clear: fadeOutCurrent,
+          for (const line of newLines) {
+            await appendLineAnimated(line, opts.cps)
+          }
+          if (opts.holdAfterMs) await sleep(opts.holdAfterMs)
+        }),
+      pushLog: (line, cps) =>
+        enqueue(async () => {
+          // Switching into log mode clears any stanza on screen first.
+          if (mode !== "log") {
+            if (linesRef.current.length > 0) await fadeOutCurrent()
+            setMode("log")
+          }
+          await appendLineAnimated(line, cps)
+        }),
+      cycleDotsOnLastLog: (base, durationMs) =>
+        enqueue(async () => {
+          const last = linesRef.current[linesRef.current.length - 1]
+          if (!last) return
+          const id = last.id
+          const variants = ["", ".", "..", "..."]
+          const start = performance.now()
+          let i = 0
+          while (performance.now() - start < durationMs) {
+            const dots = variants[i % variants.length]
+            const text = base + (dots ? " " + dots : "")
+            setLines((prev) =>
+              prev.map((l) =>
+                l.id === id
+                  ? { ...l, text, visibleChars: text.length, total: text.length }
+                  : l,
+              ),
+            )
+            i += 1
+            await sleep(300)
+          }
+        }),
+      clear: () => enqueue(fadeOutCurrent),
       showBlinkingCursor: (on: boolean) => setCursorVisible(on),
     }
     onReady(handle)
@@ -156,21 +180,22 @@ export function Terminal({ onReady, avoidCornerLogo }: Props) {
     <div
       style={{
         position: "absolute",
-        // When the logo is parked top-left, push content down so centered
-        // stanzas never overlap it. Smooth-transition this alongside the
-        // logo's own slide so the two feel coordinated.
-        top: avoidCornerLogo ? "160px" : 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
+        inset: 0,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "4vh 8vw",
+        // The logo is top-left-weighted when in corner state, so bias
+        // the text a little further from the top via padding. Symmetric
+        // bottom padding keeps the optical center close to true screen
+        // center. Values tuned for the 0.36-scale corner logo.
+        paddingTop: avoidCornerLogo ? "clamp(200px, 22vh, 340px)" : "4vh",
+        paddingBottom: avoidCornerLogo ? "clamp(200px, 22vh, 340px)" : "4vh",
+        paddingLeft: "8vw",
+        paddingRight: "8vw",
         opacity: clearing ? 0 : 1,
         transform: clearing ? "translateY(10px)" : "translateY(0)",
         transition:
-          "opacity 280ms ease-out, transform 280ms ease-out, top 1200ms cubic-bezier(0.65, 0, 0.35, 1)",
+          "opacity 280ms ease-out, transform 280ms ease-out, padding 1200ms cubic-bezier(0.65, 0, 0.35, 1)",
         zIndex: 1,
       }}
     >

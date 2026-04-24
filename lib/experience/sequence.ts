@@ -104,12 +104,14 @@ export const sequence: Cue[] = [
   { id: "amb_whine", t: 1.0, type: "ambient_start", layer: "crt_whine", target: -36, fadeMs: 1500 },
   { id: "amb_fan", t: 1.4, type: "ambient_start", layer: "fan", target: -28, fadeMs: 1500 },
 
-  // t=1.2 — logo comes up, big and centered, slow pulse
+  // t=1.2 — logo comes up, big and centered, heartbeat pulse
   { id: "logo_center", t: 1.2, type: "logo_position", position: "center" },
 
-  // Hold the centered logo for ~3.8s before the boot checklist begins.
+  // t=4.8 — logo tucks to top-left BEFORE any text appears, so the
+  // boot checklist (and everything after) has a clean centered stage.
+  { id: "logo_to_corner", t: 4.8, type: "logo_position", position: "corner" },
 
-  // t=5.0 — boot checklist begins (center-aligned small text under/around logo)
+  // t=5.0 — boot checklist begins (center-aligned small text)
   { id: "log_memory", t: 5.0, type: "log_line", line: memoryLine, cps: 30 },
   { id: "log_network", t: 6.0, type: "log_line", line: networkLine, cps: 30 },
   { id: "log_audio", t: 7.0, type: "log_line", line: audioLine, cps: 30 },
@@ -173,9 +175,6 @@ export const sequence: Cue[] = [
   { id: "wait_ballast_dip", t: 27.9, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
   { id: "wait_subtle_clump", t: 28.3, type: "clump", subtle: true },
   { id: "wait_tick", t: 29.9, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
-
-  // t=30.8 — logo moves to top-left corner as Eve prepares to speak
-  { id: "logo_to_corner", t: 30.8, type: "logo_position", position: "corner" },
 
   // ── Eve's first line ─────────────────────────────────────────────────
   { id: "cursor_off_before_eve_1", t: 31.8, type: "cursor_blink", on: false },

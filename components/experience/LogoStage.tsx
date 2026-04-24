@@ -44,7 +44,7 @@ export function LogoStage({ position }: Props) {
           left: isCenter ? "50%" : "20px",
           transform: isCenter
             ? "translate(-50%, -50%) scale(1)"
-            : "translate(0, 0) scale(0.18)",
+            : "translate(0, 0) scale(0.36)",
           transformOrigin: isCenter ? "center center" : "top left",
           transition:
             "top 1200ms cubic-bezier(0.65, 0, 0.35, 1), left 1200ms cubic-bezier(0.65, 0, 0.35, 1), transform 1200ms cubic-bezier(0.65, 0, 0.35, 1), opacity 800ms ease-out",
