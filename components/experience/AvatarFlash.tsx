@@ -1,6 +1,7 @@
 "use client"
 
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react"
+import { withBase } from "@/lib/base-path"
 
 /*
  * AvatarFlash — full-viewport avatar video tied to trapped-avatar audio.
@@ -30,9 +31,9 @@ const FADE_OUT_MS = 500
 const PEAK_OPACITY = 0.5
 
 const VIDEO_POOL = [
-  "/videos/avatar-scream-1.mp4",
-  "/videos/avatar-scream-2.mp4",
-  "/videos/avatar-scream-3.mp4",
+  withBase("/videos/avatar-scream-1.mp4"),
+  withBase("/videos/avatar-scream-2.mp4"),
+  withBase("/videos/avatar-scream-3.mp4"),
 ]
 
 export const AvatarFlash = forwardRef<AvatarFlashHandle>(function AvatarFlash(_, ref) {
