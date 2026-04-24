@@ -24,4 +24,11 @@ export type Cue =
 
 export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan"
 
-export const sequence: Cue[] = []
+/*
+ * Placeholder sequence. Phase 2 populates this with the real spec timeline.
+ * A single dummy cue at t=0.5 so the dispatcher has something to fire and
+ * we can verify the clock → cue plumbing end-to-end.
+ */
+export const sequence: Cue[] = [
+  { id: "debug_t0", t: 0.5, type: "wait", duration: 0.0 },
+]
