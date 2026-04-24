@@ -165,7 +165,24 @@ function buildClump(id: number, opts?: { subtle?: boolean }): Clump {
   }
 }
 
-export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) {
+export type ArtifactEvent =
+  | { kind: "tetris" }
+  | { kind: "symbol"; which: "heart" | "x" | "robot" }
+  | { kind: "clump"; subtle: boolean }
+  | { kind: "glitch"; intensity: "normal" | "hard" }
+
+type ArtifactsProps = {
+  /** "ink" (default) for the cream/ink main experience; "amber" for Wakeup. */
+  palette?: "ink" | "amber"
+  /** Called whenever the layer spawns a visible event — from ambient
+   *  auto-scheduling OR from an explicit handle call. Caller decides
+   *  what (if any) audio to play. */
+  onEvent?: (event: ArtifactEvent) => void
+}
+
+export const Artifacts = forwardRef<ArtifactsHandle, ArtifactsProps>(function Artifacts({ palette = "ink", onEvent }, ref) {
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
   const [tetris, setTetris] = useState<Tetris[]>([])
   const [symbols, setSymbols] = useState<Symbol[]>([])
   const [clumps, setClumps] = useState<Clump[]>([])
@@ -194,6 +211,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
         if (!ambientActiveRef.current) return
         const block = buildTetris(nextIdRef.current++)
         setTetris((prev) => [...prev, block])
+        onEventRef.current?.({ kind: "tetris" })
         const cleanup = setTimeout(() => {
           setTetris((prev) => prev.filter((b) => b.id !== block.id))
         }, block.ttl + 40)
@@ -217,6 +235,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
         const kind = kinds[Math.floor(Math.random() * kinds.length)]
         const sym = buildSymbol(nextIdRef.current++, kind)
         setSymbols((prev) => [...prev, sym])
+        onEventRef.current?.({ kind: "symbol", which: kind })
         const cleanup = setTimeout(() => {
           setSymbols((prev) => prev.filter((s) => s.id !== sym.id))
         }, sym.ttl + 80)
@@ -236,6 +255,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
         if (!ambientActiveRef.current) return
         const c = buildClump(nextIdRef.current++, { subtle: true })
         setClumps((prev) => [...prev, c])
+        onEventRef.current?.({ kind: "clump", subtle: true })
         const cleanup = setTimeout(() => {
           setClumps((prev) => prev.filter((x) => x.id !== c.id))
         }, c.ttl + 60)
@@ -276,6 +296,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
       buildClump(nextIdRef.current++),
     )
     setClumps(newClumps)
+    onEventRef.current?.({ kind: "glitch", intensity })
 
     // Tear down after a short window.
     const clearDelay = hard ? 420 : 280
@@ -289,12 +310,14 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
   const fireSymbol = useCallback((kind: "heart" | "x" | "robot" = "robot") => {
     const sym = buildSymbol(nextIdRef.current++, kind)
     setSymbols((prev) => [...prev, sym])
+    onEventRef.current?.({ kind: "symbol", which: kind })
     window.setTimeout(() => {
       setSymbols((prev) => prev.filter((s) => s.id !== sym.id))
     }, sym.ttl + 100)
   }, [])
 
   const fireClump = useCallback((opts?: { subtle?: boolean }) => {
+    onEventRef.current?.({ kind: "clump", subtle: !!opts?.subtle })
     const c = buildClump(nextIdRef.current++, opts)
     setClumps((prev) => [...prev, c])
     window.setTimeout(() => {
@@ -326,6 +349,22 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
       ? "var(--yellow)"
       : "var(--accent)"
 
+  // Palette-derived colors. The ink palette is dark-on-light (cream
+  // experience). The amber palette is bright-on-dark (Wakeup) so blocks
+  // read against pure black.
+  const blockHard = palette === "amber" ? "#d9b24a" : "var(--ink-deep)"
+  const blockSoft = palette === "amber" ? "rgba(217, 178, 74, 0.75)" : "var(--ink)"
+  // Print-registration / chromatic ghosts carry the amber bed when on
+  // black so blocks pick up warm coronas rather than cold CMYK fringes.
+  const blockShadow =
+    palette === "amber"
+      ? "drop-shadow(0.6px 0 0 rgba(228, 59, 37, 0.55)) drop-shadow(-0.6px 0 0 rgba(217, 178, 74, 0.45))"
+      : "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.4)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.4))"
+  const symbolShadow =
+    palette === "amber"
+      ? "drop-shadow(0.6px 0 0 rgba(228, 59, 37, 0.6)) drop-shadow(-0.6px 0 0 rgba(217, 178, 74, 0.5))"
+      : "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.45)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.45))"
+
   return (
     <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 7 }}>
       {/* Tetris ambient */}
@@ -337,8 +376,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             top: `${t.top}%`,
             left: `${t.left}%`,
             opacity: t.opacity,
-            filter:
-              "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.4)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.4))",
+            filter: blockShadow,
           }}
         >
           {t.cells.map(([r, c], i) => (
@@ -350,7 +388,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
                 left: c * t.cellSize,
                 width: t.cellSize,
                 height: t.cellSize,
-                background: "var(--ink-deep)",
+                background: blockHard,
               }}
             />
           ))}
@@ -366,8 +404,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             top: `${s.top}%`,
             left: `${s.left}%`,
             opacity: 0.7,
-            filter:
-              "drop-shadow(0.5px 0 0 rgba(200, 75, 143, 0.45)) drop-shadow(-0.5px 0 0 rgba(31, 182, 193, 0.45))",
+            filter: symbolShadow,
           }}
         >
           {s.cells.map(([r, c], i) => (
@@ -379,7 +416,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
                 left: c * s.cellSize,
                 width: s.cellSize,
                 height: s.cellSize,
-                background: "var(--ink-deep)",
+                background: blockHard,
               }}
             />
           ))}
@@ -406,7 +443,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
                 width: b.w,
                 height: b.h,
                 marginRight: b.gap,
-                background: "var(--ink)",
+                background: blockSoft,
                 opacity: 0.45,
               }}
             />
@@ -414,7 +451,8 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
         </div>
       ))}
 
-      {/* Chroma slices */}
+      {/* Chroma slices. On amber palette we use "screen" so the slice
+          adds light to the black background instead of darkening. */}
       {slices.map((s) => (
         <div
           key={`sl-${s.id}`}
@@ -426,8 +464,8 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             height: s.height,
             transform: `translateX(${s.shiftX}px)`,
             background: chromaColor(s.chroma),
-            mixBlendMode: "multiply",
-            opacity: 0.5,
+            mixBlendMode: palette === "amber" ? "screen" : "multiply",
+            opacity: palette === "amber" ? 0.7 : 0.5,
           }}
         />
       ))}
@@ -441,7 +479,7 @@ export const Artifacts = forwardRef<ArtifactsHandle>(function Artifacts(_, ref) 
             right: 0,
             top: `${ribbon}%`,
             height: 2,
-            background: "var(--ink-deep)",
+            background: blockHard,
             opacity: 0.7,
           }}
         />

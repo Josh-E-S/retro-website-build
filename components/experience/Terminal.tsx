@@ -34,7 +34,13 @@ export type TerminalHandle = {
   /** Show a single stanza, replacing whatever is on screen. Returns when typed. */
   stanza: (
     lines: TerminalLine[],
-    opts: { cps: number; size?: StanzaSize; holdAfterMs?: number },
+    opts: {
+      cps: number
+      size?: StanzaSize
+      holdAfterMs?: number
+      /** "type" (default) or "glitch_resolve" — stanza arrival style. */
+      variant?: "type" | "glitch_resolve"
+    },
   ) => Promise<void>
   /** Append a log line to the small-log stack (no clear). */
   pushLog: (line: TerminalLine, cps: number) => Promise<void>
@@ -59,15 +65,20 @@ type Props = {
   onReady: (handle: TerminalHandle) => void
   /** When true, push content down so the top-left corner logo never overlaps. */
   avoidCornerLogo?: boolean
-  /** Optional keystroke sound hook — called per character during typing. */
-  onKeystroke?: (kind: "short" | "long") => void
+  /** Called when a typewriter animation begins. Kind hints at line length
+   *  so the audio side can pick the right track. */
+  onTypingStart?: (kind: "short" | "long") => void
+  /** Called when the current typewriter animation ends. */
+  onTypingEnd?: () => void
 }
 
-export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
+export function Terminal({ onReady, avoidCornerLogo, onTypingStart, onTypingEnd }: Props) {
   const [mode, setMode] = useState<Mode>("stanza")
   const [size, setSize] = useState<StanzaSize>("display")
   const [lines, setLines] = useState<RenderedLine[]>([])
   const [clearing, setClearing] = useState(false)
+  const [glitchResolveActive, setGlitchResolveActive] = useState(false)
+  const [glitchResolveShake, setGlitchResolveShake] = useState(false)
   const [cursorVisible, setCursorVisible] = useState(false)
   const [cursorBlink, setCursorBlink] = useState(true)
 
@@ -77,13 +88,25 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
   const modeRef = useRef<Mode>("stanza")
   modeRef.current = mode
 
-  const keystrokeRef = useRef<((kind: "short" | "long") => void) | undefined>(undefined)
-  keystrokeRef.current = onKeystroke
+  const onTypingStartRef = useRef<((kind: "short" | "long") => void) | undefined>(undefined)
+  onTypingStartRef.current = onTypingStart
+  const onTypingEndRef = useRef<(() => void) | undefined>(undefined)
+  onTypingEndRef.current = onTypingEnd
 
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
 
+  // Idempotent guard: the handle is created at most ONCE for the
+  // component's lifetime. Strict Mode (dev) cycles effects as
+  // mount → cleanup → mount, and without this guard the second mount
+  // would build a parallel serial chain queue — each queue independently
+  // animates every incoming cue, which is exactly why typewriter text
+  // and keystroke sounds were stacking up.
+  const handleCreatedRef = useRef(false)
+
   useEffect(() => {
+    if (handleCreatedRef.current) return
+    handleCreatedRef.current = true
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
     // Global typing speed scale. 1.0 = sequence-declared cps; >1 slows
@@ -105,6 +128,72 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
       return next
     }
 
+    // Characters used to fill the scramble effect. Mix of glyphs + letters
+    // so the frame reads as "text but corrupted" rather than just noise.
+    const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@$%&*+=?!/\\<>"
+    const scrambleStr = (real: string): string => {
+      let out = ""
+      for (let i = 0; i < real.length; i++) {
+        const c = real[i]
+        if (c === " ") { out += " "; continue }
+        out += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]
+      }
+      return out
+    }
+
+    const renderLinesGlitchResolve = async (newLines: TerminalLine[]) => {
+      // Phase A: fill the screen with scrambled text of correct lengths.
+      setLines(newLines.map((l) => ({
+        id: l.id,
+        text: scrambleStr(l.text),
+        visibleChars: l.text.length,
+        total: l.text.length,
+      })))
+      setGlitchResolveActive(true)
+
+      // Phase B: scramble over ~900ms, re-rolling every 55ms. Each cycle
+      // reveals a few real characters so the resolve feels progressive,
+      // not a hard snap.
+      const scrambleDurationMs = 900
+      const cycleMs = 55
+      const cycles = Math.floor(scrambleDurationMs / cycleMs)
+      for (let k = 0; k < cycles; k++) {
+        const progress = k / cycles // 0 → 1
+        setLines(newLines.map((l) => {
+          const locked = Math.floor(l.text.length * progress)
+          let text = ""
+          for (let i = 0; i < l.text.length; i++) {
+            if (i < locked || l.text[i] === " ") {
+              text += l.text[i]
+            } else {
+              text += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]
+            }
+          }
+          return { id: l.id, text, visibleChars: l.text.length, total: l.text.length }
+        }))
+        await sleep(cycleMs)
+      }
+
+      // Phase C: vibrate twice before the crisp reveal.
+      setGlitchResolveShake(true)
+      await sleep(120)
+      setGlitchResolveShake(false)
+      await sleep(70)
+      setGlitchResolveShake(true)
+      await sleep(120)
+      setGlitchResolveShake(false)
+      await sleep(80)
+
+      // Phase D: snap to the real text, drop the glitch effect.
+      setLines(newLines.map((l) => ({
+        id: l.id,
+        text: l.text,
+        visibleChars: l.text.length,
+        total: l.text.length,
+      })))
+      setGlitchResolveActive(false)
+    }
+
     const appendLineAnimated = async (line: TerminalLine, cps: number) => {
       const perChar = (1000 / cps) * TYPING_SLOWDOWN
       const total = line.text.length
@@ -118,16 +207,7 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
         setLines((prev) =>
           prev.map((l) => (l.id === line.id ? { ...l, visibleChars: i } : l)),
         )
-        // Fire a short keystroke per character typed — skip whitespace so
-        // the audio stays tied to visible key presses.
-        const ch = line.text[i - 1]
-        if (ch && ch.trim().length > 0) {
-          keystrokeRef.current?.("short")
-        }
       }
-      // Play a "long" keystroke at the end of each line — reads like the
-      // return/enter after a completed entry.
-      keystrokeRef.current?.("long")
     }
 
     const fadeOutCurrent = async () => {
@@ -137,6 +217,12 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
       setClearing(false)
     }
 
+    // Decide which typing track fits a given total-character count. Long
+    // stanzas (Eve's sentences, welcome screen) use the longer loop so
+    // the pattern doesn't repeat audibly; short log lines use the shorter.
+    const typingKindFor = (totalChars: number): "short" | "long" =>
+      totalChars > 40 ? "long" : "short"
+
     const handle: TerminalHandle = {
       stanza: (newLines, opts) =>
         enqueue(async () => {
@@ -144,8 +230,22 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
           setSize(opts.size ?? "display")
           // Replace whatever is on screen with a brief fade first.
           if (linesRef.current.length > 0) await fadeOutCurrent()
-          for (const line of newLines) {
-            await appendLineAnimated(line, opts.cps)
+
+          if (opts.variant === "glitch_resolve") {
+            // No typewriter keystroke audio here — the stanza arrives
+            // via scramble-resolve, not typing. The caller (dispatcher)
+            // can separately fire glitch audio if desired.
+            await renderLinesGlitchResolve(newLines)
+          } else {
+            const total = newLines.reduce((n, l) => n + l.text.length, 0)
+            onTypingStartRef.current?.(typingKindFor(total))
+            try {
+              for (const line of newLines) {
+                await appendLineAnimated(line, opts.cps)
+              }
+            } finally {
+              onTypingEndRef.current?.()
+            }
           }
           if (opts.holdAfterMs) await sleep(opts.holdAfterMs)
         }),
@@ -156,7 +256,12 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
             if (linesRef.current.length > 0) await fadeOutCurrent()
             setMode("log")
           }
-          await appendLineAnimated(line, cps)
+          onTypingStartRef.current?.(typingKindFor(line.text.length))
+          try {
+            await appendLineAnimated(line, cps)
+          } finally {
+            onTypingEndRef.current?.()
+          }
         }),
       cycleDotsOnLastLog: (base, durationMs) =>
         enqueue(async () => {
@@ -234,6 +339,13 @@ export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
             color: size === "display" ? "var(--ink-deep)" : "var(--ink)",
             maxWidth: "24ch",
             textWrap: "balance" as never,
+            // Glitch-resolve: heavy chromatic offset while scrambling,
+            // plus a shake on the two vibration beats.
+            filter: glitchResolveActive
+              ? "drop-shadow(2px 0 0 rgba(200, 75, 143, 0.65)) drop-shadow(-2px 0 0 rgba(31, 182, 193, 0.6))"
+              : "none",
+            transform: glitchResolveShake ? "translateX(6px)" : "translateX(0)",
+            transition: glitchResolveShake ? "none" : "transform 80ms ease-out",
           }}
         >
           {lines.map((l) => (

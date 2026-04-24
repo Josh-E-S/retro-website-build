@@ -57,13 +57,31 @@ const AMBIENT_VARIANTS = {
 const ONESHOTS = {
   fuse: `${AUDIO_BASE}/A_single_heavy_indus_#4-1777051960039.mp3`,
   tick: `${AUDIO_BASE}/dos-beepmp3.mp3`,
+  beep: `${AUDIO_BASE}/dos-beepmp3.mp3`,
   glitch: `${AUDIO_BASE}/glitch-crt.mp3`,
   keyShort: `${AUDIO_BASE}/old-keyboard-short.mp3`,
   keyLong: `${AUDIO_BASE}/old-keyboard-long.mp3`,
+  pentiumBoot: `${AUDIO_BASE}/CMPTMisc-working_old_pentium_-Elevenlabs.mp3`,
 } as const
 
-const PRE_START_LOOP = `${AUDIO_BASE}/CMPTKey-Old_computer_termina-Elevenlabs.mp3`
-const PRE_START_DREAD = `${AUDIO_BASE}/AMBSci-Dark_room_ambience_creepy.mp3`
+// Pre-start bed: HVAC + DC fan. Starts on first user input and runs
+// until the button is pressed. These are the same files the in-session
+// ambient bed uses, but the pre-start plays them on its own bus at its
+// own levels so the Wakeup screen has a distinct audio character.
+const PRE_START_HVAC = `${AUDIO_BASE}/Distant_HVAC_ventila_#1-1777051453623.mp3`
+const PRE_START_FAN = `${AUDIO_BASE}/A_small_DC_cooling_f_#2-1777051611655.mp3`
+
+// Trapped-avatar bank: characterful AI-distress bursts. Played rarely
+// as creepy punctuation — a different flavor than glitch-crt. Each
+// firing uses a random file from the bank and a stereo pan sweep so the
+// sound moves through the room while playing.
+const TRAPPED_AVATAR_BASE = "/audio/sound-effects/trapped-avatar"
+const TRAPPED_AVATAR_FILES = [
+  `${TRAPPED_AVATAR_BASE}/A_trapped_AI_avatar__%232-1777060451781.mp3`,
+  `${TRAPPED_AVATAR_BASE}/A_trapped_AI_avatar__help_decrease_level.mp3`,
+  `${TRAPPED_AVATAR_BASE}/ai-trapped-pain.mp3`,
+  `${TRAPPED_AVATAR_BASE}/digital-noise-deleted.mp3`,
+]
 
 const MUSIC = {
   lobby: "/audio/music/Unattended_Lobby_entry.mp3",
@@ -75,14 +93,15 @@ const DEFAULT_LAYER_GAIN = {
   ballast: 0.18,
   hvac: 0.14,
   fan: 0.22,
-  crtHum: 0.2,
+  crtHum: 0.1,
   crtWhine: 0.0,
   oneshots: 0.9,
   eve: 1.0,
   music: 0.45,
-  preStart: 0.35,
-  preStartDread: 0.28,
+  preStartHvac: 0.38,
+  preStartFan: 0.5,
   keystroke: 0.3,
+  trappedAvatar: 0.55,
   /** Gain multiplier applied to the music bus while Eve is speaking. */
   musicDuckMul: 0.35,
 } as const
@@ -117,8 +136,19 @@ export type AudioEngineHandle = {
   startPreStartLoop: (fadeMs?: number) => void
   /** Fade out the pre-start loop (on button press). */
   stopPreStartLoop: (fadeMs?: number) => void
-  /** Play a single keystroke. Use "short" for chars, "long" for stanza-end beats. */
-  playKeystroke: (kind?: "short" | "long", opts?: { pitch?: number; gain?: number }) => void
+  /** Start the continuous typing-sound track (loops keyboard audio). */
+  startTyping: (kind?: "short" | "long") => void
+  /** Stop the typing-sound track with a short fade. */
+  stopTyping: () => void
+  /** A short physical clunk — use for ESTABLISH LINK button click. */
+  playButtonThunk: () => void
+  /** Play a random "trapped AI" distress sample with a stereo pan sweep. */
+  playTrappedAvatar: () => void
+  /** Fire the right one-shot for an artifact event. Tetris is probability-gated. */
+  playArtifactSfx: (
+    kind: "tetris" | "clump" | "symbol" | "glitch",
+    intensity?: "normal" | "hard" | "subtle",
+  ) => void
   /** True once all preloads have resolved. */
   isReady: () => boolean
   /** Tear down everything. */
@@ -128,11 +158,12 @@ export type AudioEngineHandle = {
 // ── Implementation ──────────────────────────────────────────────────
 
 async function fetchBuffer(ctx: AudioContext, url: string): Promise<AudioBuffer> {
-  // Some of our sound files contain '#' characters (e.g. "_#1"). Without
-  // encoding, fetch would treat everything after '#' as a URL fragment and
-  // request the wrong resource. encodeURI preserves the slashes but escapes
-  // the unsafe characters.
-  const res = await fetch(encodeURI(url))
+  // Some of our sound files contain '#' characters (e.g. "_#1"). '#' is a
+  // reserved URL fragment delimiter that encodeURI() leaves alone, so we
+  // have to escape it manually or the server never sees the full path —
+  // everything after '#' is treated as a fragment and stripped.
+  const safe = url.replace(/#/g, "%23")
+  const res = await fetch(safe)
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
   const bytes = await res.arrayBuffer()
   return ctx.decodeAudioData(bytes)
@@ -300,21 +331,29 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   let musicBuffer: AudioBuffer | null = null
   let musicSource: AudioBufferSourceNode | null = null
 
-  // Pre-start: keyboard loop + dread ambience. Both play through
-  // preStartBus so one fade turns the whole pre-start bed on/off.
-  let preStartBuffer: AudioBuffer | null = null
-  let preStartSource: AudioBufferSourceNode | null = null
-  let preStartDreadBuffer: AudioBuffer | null = null
-  let preStartDreadSource: AudioBufferSourceNode | null = null
-  const preStartDreadGain = ctx.createGain()
-  preStartDreadGain.gain.value = 0
-  preStartDreadGain.connect(preStartBus)
+  // Pre-start: HVAC + DC fan. Both layers play through their own sub-
+  // gains so we can mix the bed while using the shared preStartBus as
+  // one fade-out knob on button press.
+  let preStartHvacBuffer: AudioBuffer | null = null
+  let preStartHvacSource: AudioBufferSourceNode | null = null
+  const preStartHvacGain = ctx.createGain()
+  preStartHvacGain.gain.value = 0
+  preStartHvacGain.connect(preStartBus)
+
+  let preStartFanBuffer: AudioBuffer | null = null
+  let preStartFanSource: AudioBufferSourceNode | null = null
+  const preStartFanGain = ctx.createGain()
+  preStartFanGain.gain.value = 0
+  preStartFanGain.connect(preStartBus)
 
   // Ambient layer handles (deferred until buffers resolve)
   const layers: Partial<Record<
     AmbientLayerName,
     ReturnType<typeof createAmbientLayer> | ReturnType<typeof createCrtWhine>
   >> = {}
+
+  // Trapped-avatar buffers (populated by preload).
+  const trappedAvatarBuffers: AudioBuffer[] = []
 
   // Kick preloads
   let ready = false
@@ -346,20 +385,32 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       }
     })()
 
-    const preStartPromise = (async () => {
+    const preStartHvacPromise = (async () => {
       try {
-        preStartBuffer = await fetchBuffer(ctx, PRE_START_LOOP)
+        preStartHvacBuffer = await fetchBuffer(ctx, PRE_START_HVAC)
       } catch (err) {
-        console.warn(`[audio] pre-start load failed:`, err)
+        console.warn(`[audio] pre-start hvac load failed:`, err)
       }
     })()
 
-    const preStartDreadPromise = (async () => {
+    const preStartFanPromise = (async () => {
       try {
-        preStartDreadBuffer = await fetchBuffer(ctx, PRE_START_DREAD)
+        preStartFanBuffer = await fetchBuffer(ctx, PRE_START_FAN)
       } catch (err) {
-        console.warn(`[audio] pre-start dread load failed:`, err)
+        console.warn(`[audio] pre-start fan load failed:`, err)
       }
+    })()
+
+    const trappedAvatarPromise = (async () => {
+      const loads = await Promise.all(
+        TRAPPED_AVATAR_FILES.map((u) =>
+          fetchBuffer(ctx, u).catch((err) => {
+            console.warn(`[audio] trapped-avatar load failed: ${u}`, err)
+            return null
+          }),
+        ),
+      )
+      for (const b of loads) if (b) trappedAvatarBuffers.push(b)
     })()
 
     const ambientPromises: Array<Promise<void>> = []
@@ -424,7 +475,15 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     // Whine is generated, not loaded — attach it synchronously.
     layers.crtWhine = createCrtWhine(ctx, master, DEFAULT_LAYER_GAIN.crtWhine)
 
-    await Promise.all([...evePromises, ...oneShotPromises, ...ambientPromises, musicPromise, preStartPromise, preStartDreadPromise])
+    await Promise.all([
+      ...evePromises,
+      ...oneShotPromises,
+      ...ambientPromises,
+      musicPromise,
+      preStartHvacPromise,
+      preStartFanPromise,
+      trappedAvatarPromise,
+    ])
     ready = true
   }
   const preloadPromise = preload()
@@ -503,45 +562,53 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     musicBus.gain.linearRampToValueAtTime(DEFAULT_LAYER_GAIN.music, now + fadeMs / 1000)
   }
 
-  const startPreStartLoop: AudioEngineHandle["startPreStartLoop"] = (fadeMs = 400) => {
-    if (!preStartBuffer) {
-      void preloadPromise.then(() => { if (preStartBuffer) startPreStartLoop(fadeMs) })
+  const startPreStartLoop: AudioEngineHandle["startPreStartLoop"] = (fadeMs = 800) => {
+    const needsRetry = !preStartHvacBuffer || !preStartFanBuffer
+    if (needsRetry) {
+      void preloadPromise.then(() => {
+        if (preStartHvacBuffer && preStartFanBuffer) startPreStartLoop(fadeMs)
+      })
       return
     }
-    if (preStartSource) return
+    if (preStartHvacSource || preStartFanSource) return
     if (ctx.state === "suspended") void ctx.resume()
 
-    // Keyboard-in-another-room loop — routes directly to the preStartBus.
-    const src = ctx.createBufferSource()
-    src.buffer = preStartBuffer
-    src.loop = true
-    src.connect(preStartBus)
-    src.start()
-    preStartSource = src
+    // HVAC loop
+    const hvac = ctx.createBufferSource()
+    hvac.buffer = preStartHvacBuffer
+    hvac.loop = true
+    hvac.connect(preStartHvacGain)
+    hvac.start()
+    preStartHvacSource = hvac
 
-    // Dread ambience sub-layer — routes through its own sub-gain so the
-    // dread level can differ from the keyboard level while both fade
-    // together with the shared preStartBus on stop.
-    if (preStartDreadBuffer && !preStartDreadSource) {
-      const dread = ctx.createBufferSource()
-      dread.buffer = preStartDreadBuffer
-      dread.loop = true
-      dread.connect(preStartDreadGain)
-      dread.start()
-      preStartDreadSource = dread
-      const nowD = ctx.currentTime
-      preStartDreadGain.gain.cancelScheduledValues(nowD)
-      preStartDreadGain.gain.setValueAtTime(preStartDreadGain.gain.value, nowD)
-      preStartDreadGain.gain.linearRampToValueAtTime(
-        DEFAULT_LAYER_GAIN.preStartDread,
-        nowD + fadeMs / 1000,
-      )
-    }
+    // DC fan loop
+    const fan = ctx.createBufferSource()
+    fan.buffer = preStartFanBuffer
+    fan.loop = true
+    fan.connect(preStartFanGain)
+    fan.start()
+    preStartFanSource = fan
 
     const now = ctx.currentTime
+
+    // Bring each sub-layer up to its target gain.
+    preStartHvacGain.gain.cancelScheduledValues(now)
+    preStartHvacGain.gain.setValueAtTime(preStartHvacGain.gain.value, now)
+    preStartHvacGain.gain.linearRampToValueAtTime(
+      DEFAULT_LAYER_GAIN.preStartHvac,
+      now + fadeMs / 1000,
+    )
+    preStartFanGain.gain.cancelScheduledValues(now)
+    preStartFanGain.gain.setValueAtTime(preStartFanGain.gain.value, now)
+    preStartFanGain.gain.linearRampToValueAtTime(
+      DEFAULT_LAYER_GAIN.preStartFan,
+      now + fadeMs / 1000,
+    )
+
+    // Shared bus at unity — sub-gains own the mix.
     preStartBus.gain.cancelScheduledValues(now)
     preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
-    preStartBus.gain.linearRampToValueAtTime(DEFAULT_LAYER_GAIN.preStart, now + fadeMs / 1000)
+    preStartBus.gain.linearRampToValueAtTime(1, now + fadeMs / 1000)
   }
 
   const stopPreStartLoop: AudioEngineHandle["stopPreStartLoop"] = (fadeMs = 400) => {
@@ -549,38 +616,170 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     preStartBus.gain.cancelScheduledValues(now)
     preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
     preStartBus.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
-    preStartDreadGain.gain.cancelScheduledValues(now)
-    preStartDreadGain.gain.setValueAtTime(preStartDreadGain.gain.value, now)
-    preStartDreadGain.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
     window.setTimeout(() => {
-      if (preStartSource) {
-        try { preStartSource.stop() } catch { /* noop */ }
-        try { preStartSource.disconnect() } catch { /* noop */ }
-        preStartSource = null
+      if (preStartHvacSource) {
+        try { preStartHvacSource.stop() } catch { /* noop */ }
+        try { preStartHvacSource.disconnect() } catch { /* noop */ }
+        preStartHvacSource = null
       }
-      if (preStartDreadSource) {
-        try { preStartDreadSource.stop() } catch { /* noop */ }
-        try { preStartDreadSource.disconnect() } catch { /* noop */ }
-        preStartDreadSource = null
+      if (preStartFanSource) {
+        try { preStartFanSource.stop() } catch { /* noop */ }
+        try { preStartFanSource.disconnect() } catch { /* noop */ }
+        preStartFanSource = null
       }
     }, fadeMs + 60)
   }
 
-  const playKeystroke: AudioEngineHandle["playKeystroke"] = (kind = "short", opts) => {
+  const playArtifactSfx: AudioEngineHandle["playArtifactSfx"] = (kind, intensity) => {
+    switch (kind) {
+      case "tetris":
+        // Tetris fires very frequently — only sound ~25% of the time, and
+        // when we do, pitch the beep high and quiet so it reads as a blip.
+        if (Math.random() < 0.25) {
+          const src = ctx.createBufferSource()
+          const buf = oneShotBuffers.get("beep")
+          if (!buf) return
+          src.buffer = buf
+          src.playbackRate.value = 1.8 + Math.random() * 0.8
+          const g = ctx.createGain()
+          g.gain.value = 0.18
+          src.connect(g).connect(oneShotBus)
+          src.start()
+          src.onended = () => {
+            try { src.disconnect() } catch { /* noop */ }
+            try { g.disconnect() } catch { /* noop */ }
+          }
+        }
+        break
+      case "clump": {
+        // Soft morse-ish tick, subtle gets quieter.
+        const src = ctx.createBufferSource()
+        const buf = oneShotBuffers.get("beep")
+        if (!buf) return
+        src.buffer = buf
+        src.playbackRate.value = 0.6 + Math.random() * 0.3
+        const g = ctx.createGain()
+        g.gain.value = intensity === "subtle" ? 0.25 : 0.4
+        src.connect(g).connect(oneShotBus)
+        src.start()
+        src.onended = () => {
+          try { src.disconnect() } catch { /* noop */ }
+          try { g.disconnect() } catch { /* noop */ }
+        }
+        break
+      }
+      case "symbol":
+        // Symbols are rare and weird — use glitch-crt at low gain.
+        playOneShot("glitch", { gain: 0.3 })
+        break
+      case "glitch":
+        // Hard glitches are loud; normal glitches are mid.
+        playOneShot("glitch", { gain: intensity === "hard" ? 0.85 : 0.5 })
+        break
+    }
+  }
+
+  // Typing track state. old-keyboard-*.mp3 are continuous typing loops
+  // (4s and 10.88s respectively) — we play them as looping background
+  // audio while text is being typed on screen, not as per-character
+  // samples. Starting a second track while one is live is a no-op so
+  // overlapping startTyping calls don't stack.
+  let typingSource: AudioBufferSourceNode | null = null
+
+  const startTyping: AudioEngineHandle["startTyping"] = (kind = "short") => {
+    if (typingSource) return // already playing — don't stack
     const bufName: keyof typeof ONESHOTS = kind === "long" ? "keyLong" : "keyShort"
     const buf = oneShotBuffers.get(bufName)
     if (!buf) return
+    if (ctx.state === "suspended") void ctx.resume()
     const src = ctx.createBufferSource()
     src.buffer = buf
-    // Small pitch randomization so repeated chars don't sound mechanical.
-    // opts.pitch overrides; otherwise we vary ±8% around 1.0.
-    src.playbackRate.value = opts?.pitch ?? (0.92 + Math.random() * 0.16)
+    src.loop = true
+    src.connect(keystrokeBus)
+    src.start()
+    typingSource = src
+    // Restore bus gain to target (we may have faded it to 0 on stop).
+    const now = ctx.currentTime
+    keystrokeBus.gain.cancelScheduledValues(now)
+    keystrokeBus.gain.setValueAtTime(keystrokeBus.gain.value, now)
+    keystrokeBus.gain.linearRampToValueAtTime(
+      DEFAULT_LAYER_GAIN.keystroke,
+      now + 0.08,
+    )
+  }
+
+  const stopTyping: AudioEngineHandle["stopTyping"] = () => {
+    if (!typingSource) return
+    const src = typingSource
+    typingSource = null
+    const now = ctx.currentTime
+    keystrokeBus.gain.cancelScheduledValues(now)
+    keystrokeBus.gain.setValueAtTime(keystrokeBus.gain.value, now)
+    keystrokeBus.gain.linearRampToValueAtTime(0, now + 0.22)
+    window.setTimeout(() => {
+      try { src.stop() } catch { /* noop */ }
+      try { src.disconnect() } catch { /* noop */ }
+    }, 260)
+  }
+
+  const playButtonThunk: AudioEngineHandle["playButtonThunk"] = () => {
+    // One-shot the short keyboard track at a higher gain as a physical
+    // button click. Not looped.
+    const buf = oneShotBuffers.get("keyLong")
+    if (!buf) return
+    if (ctx.state === "suspended") void ctx.resume()
+    const src = ctx.createBufferSource()
+    src.buffer = buf
     const g = ctx.createGain()
-    g.gain.value = opts?.gain ?? 1
-    src.connect(g).connect(keystrokeBus)
+    g.gain.value = 1.2
+    src.connect(g).connect(oneShotBus)
     src.onended = () => {
       try { src.disconnect() } catch { /* noop */ }
       try { g.disconnect() } catch { /* noop */ }
+    }
+    src.start()
+    // Stop after ~300ms — we only want the initial impact, not the full
+    // 10s typing track.
+    window.setTimeout(() => {
+      try { src.stop() } catch { /* noop */ }
+    }, 320)
+  }
+
+  const playTrappedAvatar: AudioEngineHandle["playTrappedAvatar"] = () => {
+    if (trappedAvatarBuffers.length === 0) return
+    if (ctx.state === "suspended") void ctx.resume()
+
+    const buf = trappedAvatarBuffers[
+      Math.floor(Math.random() * trappedAvatarBuffers.length)
+    ]
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+
+    // Per-firing gain (some samples are hotter than others; random ±20%).
+    const g = ctx.createGain()
+    g.gain.value = DEFAULT_LAYER_GAIN.trappedAvatar * (0.85 + Math.random() * 0.3)
+
+    // Stereo pan sweep — the voice moves across the room during playback.
+    // Start on a random side, drift to the opposite side over the sample
+    // duration, sometimes with a small S-curve via intermediate points.
+    const panner = ctx.createStereoPanner()
+    const startPan = (Math.random() - 0.5) * 1.6 // -0.8 .. 0.8
+    const endPan = -startPan * (0.7 + Math.random() * 0.5)
+    const now = ctx.currentTime
+    const dur = buf.duration
+    panner.pan.setValueAtTime(startPan, now)
+    // Optional mid-point swing for a less linear motion.
+    if (Math.random() < 0.5) {
+      const midPan = (Math.random() - 0.5) * 1.4
+      panner.pan.linearRampToValueAtTime(midPan, now + dur * 0.5)
+    }
+    panner.pan.linearRampToValueAtTime(endPan, now + dur)
+
+    src.connect(g).connect(panner).connect(oneShotBus)
+    src.onended = () => {
+      try { src.disconnect() } catch { /* noop */ }
+      try { g.disconnect() } catch { /* noop */ }
+      try { panner.disconnect() } catch { /* noop */ }
     }
     src.start()
   }
@@ -643,17 +842,23 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       try { musicSource.disconnect() } catch { /* noop */ }
       musicSource = null
     }
-    if (preStartSource) {
-      try { preStartSource.stop() } catch { /* noop */ }
-      try { preStartSource.disconnect() } catch { /* noop */ }
-      preStartSource = null
+    if (typingSource) {
+      try { typingSource.stop() } catch { /* noop */ }
+      try { typingSource.disconnect() } catch { /* noop */ }
+      typingSource = null
     }
-    if (preStartDreadSource) {
-      try { preStartDreadSource.stop() } catch { /* noop */ }
-      try { preStartDreadSource.disconnect() } catch { /* noop */ }
-      preStartDreadSource = null
+    if (preStartHvacSource) {
+      try { preStartHvacSource.stop() } catch { /* noop */ }
+      try { preStartHvacSource.disconnect() } catch { /* noop */ }
+      preStartHvacSource = null
     }
-    try { preStartDreadGain.disconnect() } catch { /* noop */ }
+    if (preStartFanSource) {
+      try { preStartFanSource.stop() } catch { /* noop */ }
+      try { preStartFanSource.disconnect() } catch { /* noop */ }
+      preStartFanSource = null
+    }
+    try { preStartHvacGain.disconnect() } catch { /* noop */ }
+    try { preStartFanGain.disconnect() } catch { /* noop */ }
     for (const layer of Object.values(layers)) {
       if (layer) layer.dispose()
     }
@@ -678,7 +883,11 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     unduckMusic,
     startPreStartLoop,
     stopPreStartLoop,
-    playKeystroke,
+    startTyping,
+    stopTyping,
+    playButtonThunk,
+    playTrappedAvatar,
+    playArtifactSfx,
     isReady: () => ready,
     dispose,
   }

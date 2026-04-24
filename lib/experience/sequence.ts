@@ -40,6 +40,9 @@ export type Cue =
       cps: number
       size?: StanzaSize
       holdAfterMs?: number
+      /** Arrival style. "type" (default) runs the typewriter; "glitch_resolve"
+       *  does a scrambled-char arrival with chromatic offset, settles clean. */
+      variant?: "type" | "glitch_resolve"
     }
   | { id: string; t: number; type: "log_line"; line: TypewriterLine; cps: number }
   | { id: string; t: number; type: "log_dots"; base: string; durationMs: number }
@@ -53,6 +56,7 @@ export type Cue =
   | { id: string; t: number; type: "logo_position"; position: LogoPosition }
   | { id: string; t: number; type: "music_start"; fadeMs?: number }
   | { id: string; t: number; type: "music_stop"; fadeMs?: number }
+  | { id: string; t: number; type: "trapped_avatar" }
 
 export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan" | "crt_hum"
 
@@ -128,7 +132,7 @@ export const sequence: Cue[] = [
   { id: "log_init", t: 10.4, type: "log_line", line: initLine, cps: 30 },
   { id: "log_init_dots", t: 11.5, type: "log_dots", base: "INITIALIZING CANDIDATE INTERFACE", durationMs: 1400 },
 
-  // t=13.0 — clear, welcome stanza
+  // t=13.0 — clear, welcome stanza arriving as a glitch-resolve
   { id: "clear_to_welcome", t: 13.0, type: "clear" },
   {
     id: "welcome_title",
@@ -140,11 +144,15 @@ export const sequence: Cue[] = [
     ],
     cps: 22,
     size: "display",
-    holdAfterMs: 1800,
+    variant: "glitch_resolve",
+    // Hold longer — this is the beat that sets the tone for the whole
+    // experience. Spec called 1.8s; we double+ it so the phrase lands.
+    holdAfterMs: 5200,
   },
   {
     id: "welcome_sub",
-    t: 17.4,
+    // Delayed ~3s to accommodate the longer hold above.
+    t: 20.4,
     type: "stanza",
     lines: [
       { id: "ws_1", text: "A research initiative of" },
@@ -156,7 +164,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "welcome_notice",
-    t: 21.1,
+    t: 24.1,
     type: "stanza",
     lines: [
       { id: "wn_1", text: "Your candidate session" },
@@ -168,25 +176,28 @@ export const sequence: Cue[] = [
   },
   {
     id: "remain",
-    t: 24.9,
+    t: 27.9,
     type: "stanza",
     lines: [{ id: "r_1", text: "Please remain at your desk." }],
     cps: 32,
     size: "body",
     holdAfterMs: 600,
   },
-  { id: "cursor_on", t: 26.7, type: "cursor_blink", on: true },
+  { id: "cursor_on", t: 29.7, type: "cursor_blink", on: true },
 
   // Intentional 4-second silence
-  { id: "wait_ballast_dip", t: 27.9, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
-  { id: "wait_subtle_clump", t: 28.3, type: "clump", subtle: true },
-  { id: "wait_tick", t: 29.9, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
+  { id: "wait_ballast_dip", t: 30.9, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
+  { id: "wait_subtle_clump", t: 31.3, type: "clump", subtle: true },
+  // Trapped-avatar burst in the silence before Eve speaks — the player
+  // hears the voice of something already in the system.
+  { id: "wait_trapped", t: 31.9, type: "trapped_avatar" },
+  { id: "wait_tick", t: 32.9, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
 
   // ── Eve's first line ─────────────────────────────────────────────────
-  { id: "cursor_off_before_eve_1", t: 31.8, type: "cursor_blink", on: false },
+  { id: "cursor_off_before_eve_1", t: 34.8, type: "cursor_blink", on: false },
   {
     id: "eve_1a",
-    t: 32.0,
+    t: 35.0,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["Hello.", "You're awake."],
@@ -195,7 +206,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1b",
-    t: 36.2,
+    t: 39.2,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["My name is Eve."],
@@ -204,7 +215,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1c",
-    t: 39.2,
+    t: 42.2,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["I'm here to help you", "through your enrollment."],
@@ -213,7 +224,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1d",
-    t: 43.2,
+    t: 46.2,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["Please take a moment", "to orient yourself."],
@@ -222,7 +233,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1e",
-    t: 47.2,
+    t: 50.2,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["There is no hurry."],
@@ -233,7 +244,7 @@ export const sequence: Cue[] = [
   // ── Eve's second line ────────────────────────────────────────────────
   {
     id: "eve_2a",
-    t: 54.5,
+    t: 57.5,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -244,20 +255,20 @@ export const sequence: Cue[] = [
     cps: 32,
     holdAfterMs: 1000,
   },
-  { id: "glitch_disorientation", t: 56.8, type: "glitch", intensity: "hard" },
+  { id: "glitch_disorientation", t: 59.8, type: "glitch", intensity: "hard" },
   {
     id: "eve_2b",
-    t: 60.2,
+    t: 63.2,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["This is common.", "It will pass."],
     cps: 22,
     holdAfterMs: 1200,
   },
-  { id: "symbol_after_pass", t: 63.4, type: "symbol", kind: "robot" },
+  { id: "symbol_after_pass", t: 66.4, type: "symbol", kind: "robot" },
   {
     id: "eve_2c",
-    t: 65.5,
+    t: 68.5,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -270,7 +281,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2d",
-    t: 72.5,
+    t: 75.5,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -284,7 +295,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2e",
-    t: 80.5,
+    t: 83.5,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["If at any point you need a moment,", "you may take one."],
@@ -293,16 +304,20 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2f",
-    t: 85.8,
+    t: 88.8,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["The study proceeds at your pace."],
     cps: 28,
     holdAfterMs: 1800,
   },
+  // Another trapped voice right after "proceeds at your pace" — hard cut
+  // against Eve's calm, the way the earlier glitch at "disorientation"
+  // works. Timed in the beat between her lines.
+  { id: "trapped_during_eve", t: 91.4, type: "trapped_avatar" },
   {
     id: "eve_2g",
-    t: 90.8,
+    t: 93.8,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["Before we begin,", "I'll need to confirm a few details."],
@@ -311,17 +326,17 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2h",
-    t: 95.8,
+    t: 98.8,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["There are no wrong answers."],
     cps: 24,
     holdAfterMs: 1100,
   },
-  { id: "glitch_no_wrong", t: 97.4, type: "glitch", intensity: "normal" },
+  { id: "glitch_no_wrong", t: 100.4, type: "glitch", intensity: "normal" },
   {
     id: "eve_2i",
-    t: 99.8,
+    t: 102.8,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["This is just to help me understand", "how best to support you today."],
@@ -330,12 +345,12 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2j",
-    t: 106.0,
+    t: 109.0,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["Are you ready to continue?"],
     cps: 22,
     holdAfterMs: 0,
   },
-  { id: "cursor_on_after_eve", t: 110.0, type: "cursor_blink", on: true },
+  { id: "cursor_on_after_eve", t: 113.0, type: "cursor_blink", on: true },
 ]

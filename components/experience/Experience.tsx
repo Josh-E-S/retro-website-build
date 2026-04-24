@@ -5,6 +5,7 @@ import { Wakeup } from "./Wakeup"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
 import { Artifacts, type ArtifactsHandle } from "./Artifacts"
+import { AvatarFlash, type AvatarFlashHandle } from "./AvatarFlash"
 import { LogoStage, type LogoPosition as LogoStatePosition } from "./LogoStage"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
@@ -26,8 +27,13 @@ export function Experience() {
   const [logoPos, setLogoPos] = useState<LogoStatePosition>("hidden")
   const terminalRef = useRef<TerminalHandle | null>(null)
   const artifactsRef = useRef<ArtifactsHandle | null>(null)
+  const avatarFlashRef = useRef<AvatarFlashHandle | null>(null)
   const audioRef = useRef<AudioEngineHandle | null>(null)
   const cursorRef = useRef(0)
+  // The single live clock. Guards against Strict Mode double-mount or any
+  // effect-rerun spawning a parallel clock: if one already exists, the
+  // effect is a no-op.
+  const clockRef = useRef<ReturnType<typeof createClock> | null>(null)
 
   const handleCue = useCallback((cue: Cue) => {
     const term = terminalRef.current
@@ -38,7 +44,13 @@ export function Experience() {
           cps: cue.cps,
           size: cue.size,
           holdAfterMs: cue.holdAfterMs,
+          variant: cue.variant,
         })
+        // On a glitch-resolve stanza we also kick a glitch sound so the
+        // audio arrival matches the visual chaos.
+        if (cue.variant === "glitch_resolve" && audioRef.current) {
+          audioRef.current.playArtifactSfx("glitch", "hard")
+        }
         break
       case "log_line":
         if (term) void term.pushLog(cue.line, cue.cps)
@@ -66,12 +78,9 @@ export function Experience() {
         if (art) (cue.on ? art.ambient.start() : art.ambient.stop())
         break
       case "glitch":
+        // Artifacts fires the corresponding one-shot via onEvent, so we
+        // don't call playOneShot here — that would double up.
         if (art) art.glitch(cue.intensity)
-        // Hard glitches also fire a glitch sound; normal ones stay visual-only
-        // so they don't become loud every time.
-        if (audioRef.current && cue.intensity === "hard") {
-          audioRef.current.playOneShot("glitch", { gain: 0.8 })
-        }
         break
       case "symbol":
         if (art) art.symbol(cue.kind)
@@ -116,6 +125,12 @@ export function Experience() {
       case "music_stop":
         if (audioRef.current) audioRef.current.stopMusic(cue.fadeMs)
         break
+      case "trapped_avatar":
+        if (audioRef.current) audioRef.current.playTrappedAvatar()
+        // Pair audio with the full-viewport avatar image + hard glitch.
+        avatarFlashRef.current?.flash(8000)
+        artifactsRef.current?.glitch("hard")
+        break
     }
     // eslint-disable-next-line no-console
     console.log(`[cue] t=${cue.t.toFixed(2)} ${cue.type} (${cue.id})`)
@@ -123,6 +138,18 @@ export function Experience() {
 
   useEffect(() => {
     if (phase !== "running") return
+    // Idempotent bootstrap: the clock is created at most ONCE for the
+    // component's lifetime. Strict Mode double-mounts (and any spurious
+    // effect re-runs) are safe — the guard short-circuits.
+    //
+    // We intentionally do NOT null the ref on cleanup. Strict Mode in
+    // dev does mount → cleanup → mount again; clearing the ref in the
+    // cleanup would let the second mount spawn a new clock, which is
+    // exactly the bug we're preventing. On real unmount, the component
+    // is gone anyway — the orphaned clock would stop at next tick due
+    // to lost onTick referents, but in practice this effect only ends
+    // when the whole app tears down.
+    if (clockRef.current) return
     const sorted = [...sequence].sort((a, b) => a.t - b.t)
     cursorRef.current = 0
     const clock = createClock((t) => {
@@ -135,8 +162,17 @@ export function Experience() {
       }
     })
     clock.start()
-    return () => clock.stop()
+    clockRef.current = clock
+    // No cleanup — see comment above.
   }, [phase, handleCue])
+
+  // Stop the clock on real component unmount (not Strict Mode cycle).
+  useEffect(() => {
+    return () => {
+      clockRef.current?.stop()
+      clockRef.current = null
+    }
+  }, [])
 
   const handleUnlock = useCallback((_latencyMs: number, audio: AudioEngineHandle) => {
     audioRef.current = audio
@@ -165,10 +201,32 @@ export function Experience() {
           <Terminal
             onReady={handleTerminalReady}
             avoidCornerLogo={logoPos === "corner"}
-            onKeystroke={(kind) => audioRef.current?.playKeystroke(kind)}
+            onTypingStart={(kind) => audioRef.current?.startTyping(kind)}
+            onTypingEnd={() => audioRef.current?.stopTyping()}
           />
-          <Artifacts ref={artifactsRef} />
+          <Artifacts
+            ref={artifactsRef}
+            onEvent={(ev) => {
+              const engine = audioRef.current
+              if (!engine) return
+              switch (ev.kind) {
+                case "tetris":
+                  engine.playArtifactSfx("tetris")
+                  break
+                case "clump":
+                  engine.playArtifactSfx("clump", ev.subtle ? "subtle" : "normal")
+                  break
+                case "symbol":
+                  engine.playArtifactSfx("symbol")
+                  break
+                case "glitch":
+                  engine.playArtifactSfx("glitch", ev.intensity)
+                  break
+              }
+            }}
+          />
           <LogoStage position={logoPos} />
+          <AvatarFlash ref={avatarFlashRef} />
         </Stage>
       )}
     </main>
