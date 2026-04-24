@@ -1,5 +1,6 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
+import { withBase } from "@/lib/base-path"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
   description: "",
   robots: { index: false, follow: false },
   icons: {
-    icon: [{ url: "/favicon.png", type: "image/png", sizes: "1x1" }],
+    icon: [{ url: withBase("/favicon.png"), type: "image/png", sizes: "1x1" }],
   },
 }
 

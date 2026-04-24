@@ -24,7 +24,9 @@
  * LiveKit / spatial/reverb/highshelf treatment comes later.
  */
 
-const AUDIO_BASE = "/audio/sound-effects/crt"
+import { withBase } from "@/lib/base-path"
+
+const AUDIO_BASE = withBase("/audio/sound-effects/crt")
 
 // ── Asset catalog ────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ const PRE_START_FAN = `${AUDIO_BASE}/A_small_DC_cooling_f_#2-1777051611655.mp3`
 // as creepy punctuation — a different flavor than glitch-crt. Each
 // firing uses a random file from the bank and a stereo pan sweep so the
 // sound moves through the room while playing.
-const TRAPPED_AVATAR_BASE = "/audio/sound-effects/trapped-avatar"
+const TRAPPED_AVATAR_BASE = withBase("/audio/sound-effects/trapped-avatar")
 const TRAPPED_AVATAR_FILES = [
   `${TRAPPED_AVATAR_BASE}/A_trapped_AI_avatar__%232-1777060451781.mp3`,
   `${TRAPPED_AVATAR_BASE}/A_trapped_AI_avatar__help_decrease_level.mp3`,
@@ -84,7 +86,7 @@ const TRAPPED_AVATAR_FILES = [
 ]
 
 const MUSIC = {
-  lobby: "/audio/music/Unattended_Lobby_entry.mp3",
+  lobby: withBase("/audio/music/Unattended_Lobby_entry.mp3"),
 } as const
 
 // ── Gain defaults (linear 0–1). Tuned on first listen; retune freely. ─
@@ -360,7 +362,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   const preload = async () => {
     const evePromises = EVE_LINE_IDS.map(async (id) => {
       try {
-        const buf = await fetchBuffer(ctx, `/audio/${id}.mp3`)
+        const buf = await fetchBuffer(ctx, withBase(`/audio/${id}.mp3`))
         eveBuffers.set(id, buf)
       } catch (err) {
         console.warn(`[audio] eve load failed: ${id}`, err)
