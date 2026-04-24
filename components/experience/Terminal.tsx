@@ -59,9 +59,11 @@ type Props = {
   onReady: (handle: TerminalHandle) => void
   /** When true, push content down so the top-left corner logo never overlaps. */
   avoidCornerLogo?: boolean
+  /** Optional keystroke sound hook — called per character during typing. */
+  onKeystroke?: (kind: "short" | "long") => void
 }
 
-export function Terminal({ onReady, avoidCornerLogo }: Props) {
+export function Terminal({ onReady, avoidCornerLogo, onKeystroke }: Props) {
   const [mode, setMode] = useState<Mode>("stanza")
   const [size, setSize] = useState<StanzaSize>("display")
   const [lines, setLines] = useState<RenderedLine[]>([])
@@ -71,6 +73,9 @@ export function Terminal({ onReady, avoidCornerLogo }: Props) {
 
   const linesRef = useRef<RenderedLine[]>([])
   linesRef.current = lines
+
+  const keystrokeRef = useRef<((kind: "short" | "long") => void) | undefined>(undefined)
+  keystrokeRef.current = onKeystroke
 
   useEffect(() => {
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
@@ -107,7 +112,16 @@ export function Terminal({ onReady, avoidCornerLogo }: Props) {
         setLines((prev) =>
           prev.map((l) => (l.id === line.id ? { ...l, visibleChars: i } : l)),
         )
+        // Fire a short keystroke per character typed — skip whitespace so
+        // the audio stays tied to visible key presses.
+        const ch = line.text[i - 1]
+        if (ch && ch.trim().length > 0) {
+          keystrokeRef.current?.("short")
+        }
       }
+      // Play a "long" keystroke at the end of each line — reads like the
+      // return/enter after a completed entry.
+      keystrokeRef.current?.("long")
     }
 
     const fadeOutCurrent = async () => {

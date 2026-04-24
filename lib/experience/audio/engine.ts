@@ -48,8 +48,9 @@ const AMBIENT_VARIANTS = {
     `${AUDIO_BASE}/A_small_DC_cooling_f_#2-1777051611655.mp3`,
   ],
   crtHum: [
+    // Only the monitor hum. CMPTKey is reserved for the pre-start
+    // "someone is typing in another room" loop on the Wakeup screen.
     `${AUDIO_BASE}/CMPTMisc-monitor_crt_hum._The-Elevenlabs.mp3`,
-    `${AUDIO_BASE}/CMPTKey-Old_computer_termina-Elevenlabs.mp3`,
   ],
 } as const
 
@@ -57,7 +58,11 @@ const ONESHOTS = {
   fuse: `${AUDIO_BASE}/A_single_heavy_indus_#4-1777051960039.mp3`,
   tick: `${AUDIO_BASE}/dos-beepmp3.mp3`,
   glitch: `${AUDIO_BASE}/glitch-crt.mp3`,
+  keyShort: `${AUDIO_BASE}/old-keyboard-short.mp3`,
+  keyLong: `${AUDIO_BASE}/old-keyboard-long.mp3`,
 } as const
+
+const PRE_START_LOOP = `${AUDIO_BASE}/CMPTKey-Old_computer_termina-Elevenlabs.mp3`
 
 const MUSIC = {
   lobby: "/audio/music/Unattended_Lobby_entry.mp3",
@@ -74,6 +79,8 @@ const DEFAULT_LAYER_GAIN = {
   oneshots: 0.9,
   eve: 1.0,
   music: 0.45,
+  preStart: 0.35,
+  keystroke: 0.3,
   /** Gain multiplier applied to the music bus while Eve is speaking. */
   musicDuckMul: 0.35,
 } as const
@@ -104,6 +111,12 @@ export type AudioEngineHandle = {
   duckMusic: (depth: number, fadeMs?: number) => void
   /** Release the duck back to full level. */
   unduckMusic: (fadeMs?: number) => void
+  /** Start the pre-start keyboard-in-another-room loop (Wakeup screen). */
+  startPreStartLoop: (fadeMs?: number) => void
+  /** Fade out the pre-start loop (on button press). */
+  stopPreStartLoop: (fadeMs?: number) => void
+  /** Play a single keystroke. Use "short" for chars, "long" for stanza-end beats. */
+  playKeystroke: (kind?: "short" | "long", opts?: { pitch?: number; gain?: number }) => void
   /** True once all preloads have resolved. */
   isReady: () => boolean
   /** Tear down everything. */
@@ -267,6 +280,14 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   musicBus.gain.value = 0
   musicBus.connect(master)
 
+  const preStartBus = ctx.createGain()
+  preStartBus.gain.value = 0
+  preStartBus.connect(master)
+
+  const keystrokeBus = ctx.createGain()
+  keystrokeBus.gain.value = DEFAULT_LAYER_GAIN.keystroke
+  keystrokeBus.connect(master)
+
   // Eve buffers
   const eveBuffers = new Map<string, AudioBuffer>()
 
@@ -276,6 +297,10 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   // Music buffer + currently-playing source
   let musicBuffer: AudioBuffer | null = null
   let musicSource: AudioBufferSourceNode | null = null
+
+  // Pre-start keyboard loop
+  let preStartBuffer: AudioBuffer | null = null
+  let preStartSource: AudioBufferSourceNode | null = null
 
   // Ambient layer handles (deferred until buffers resolve)
   const layers: Partial<Record<
@@ -310,6 +335,14 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
         musicBuffer = await fetchBuffer(ctx, MUSIC.lobby)
       } catch (err) {
         console.warn(`[audio] music load failed:`, err)
+      }
+    })()
+
+    const preStartPromise = (async () => {
+      try {
+        preStartBuffer = await fetchBuffer(ctx, PRE_START_LOOP)
+      } catch (err) {
+        console.warn(`[audio] pre-start load failed:`, err)
       }
     })()
 
@@ -375,7 +408,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     // Whine is generated, not loaded — attach it synchronously.
     layers.crtWhine = createCrtWhine(ctx, master, DEFAULT_LAYER_GAIN.crtWhine)
 
-    await Promise.all([...evePromises, ...oneShotPromises, ...ambientPromises, musicPromise])
+    await Promise.all([...evePromises, ...oneShotPromises, ...ambientPromises, musicPromise, preStartPromise])
     ready = true
   }
   const preloadPromise = preload()
@@ -454,6 +487,58 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     musicBus.gain.linearRampToValueAtTime(DEFAULT_LAYER_GAIN.music, now + fadeMs / 1000)
   }
 
+  const startPreStartLoop: AudioEngineHandle["startPreStartLoop"] = (fadeMs = 400) => {
+    if (!preStartBuffer) {
+      void preloadPromise.then(() => { if (preStartBuffer) startPreStartLoop(fadeMs) })
+      return
+    }
+    if (preStartSource) return
+    if (ctx.state === "suspended") void ctx.resume()
+    const src = ctx.createBufferSource()
+    src.buffer = preStartBuffer
+    src.loop = true
+    src.connect(preStartBus)
+    src.start()
+    preStartSource = src
+    const now = ctx.currentTime
+    preStartBus.gain.cancelScheduledValues(now)
+    preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
+    preStartBus.gain.linearRampToValueAtTime(DEFAULT_LAYER_GAIN.preStart, now + fadeMs / 1000)
+  }
+
+  const stopPreStartLoop: AudioEngineHandle["stopPreStartLoop"] = (fadeMs = 400) => {
+    const now = ctx.currentTime
+    preStartBus.gain.cancelScheduledValues(now)
+    preStartBus.gain.setValueAtTime(preStartBus.gain.value, now)
+    preStartBus.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
+    window.setTimeout(() => {
+      if (preStartSource) {
+        try { preStartSource.stop() } catch { /* noop */ }
+        try { preStartSource.disconnect() } catch { /* noop */ }
+        preStartSource = null
+      }
+    }, fadeMs + 60)
+  }
+
+  const playKeystroke: AudioEngineHandle["playKeystroke"] = (kind = "short", opts) => {
+    const bufName: keyof typeof ONESHOTS = kind === "long" ? "keyLong" : "keyShort"
+    const buf = oneShotBuffers.get(bufName)
+    if (!buf) return
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    // Small pitch randomization so repeated chars don't sound mechanical.
+    // opts.pitch overrides; otherwise we vary ±8% around 1.0.
+    src.playbackRate.value = opts?.pitch ?? (0.92 + Math.random() * 0.16)
+    const g = ctx.createGain()
+    g.gain.value = opts?.gain ?? 1
+    src.connect(g).connect(keystrokeBus)
+    src.onended = () => {
+      try { src.disconnect() } catch { /* noop */ }
+      try { g.disconnect() } catch { /* noop */ }
+    }
+    src.start()
+  }
+
   const playOneShot: AudioEngineHandle["playOneShot"] = (name, opts) => {
     const buf = oneShotBuffers.get(name)
     if (!buf) {
@@ -512,12 +597,19 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       try { musicSource.disconnect() } catch { /* noop */ }
       musicSource = null
     }
+    if (preStartSource) {
+      try { preStartSource.stop() } catch { /* noop */ }
+      try { preStartSource.disconnect() } catch { /* noop */ }
+      preStartSource = null
+    }
     for (const layer of Object.values(layers)) {
       if (layer) layer.dispose()
     }
     try { eveBus.disconnect() } catch { /* noop */ }
     try { oneShotBus.disconnect() } catch { /* noop */ }
     try { musicBus.disconnect() } catch { /* noop */ }
+    try { preStartBus.disconnect() } catch { /* noop */ }
+    try { keystrokeBus.disconnect() } catch { /* noop */ }
     try { master.disconnect() } catch { /* noop */ }
     void ctx.close()
   }
@@ -532,6 +624,9 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     stopMusic,
     duckMusic,
     unduckMusic,
+    startPreStartLoop,
+    stopPreStartLoop,
+    playKeystroke,
     isReady: () => ready,
     dispose,
   }

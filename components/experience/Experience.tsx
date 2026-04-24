@@ -165,6 +165,7 @@ export function Experience() {
           <Terminal
             onReady={handleTerminalReady}
             avoidCornerLogo={logoPos === "corner"}
+            onKeystroke={(kind) => audioRef.current?.playKeystroke(kind)}
           />
           <Artifacts ref={artifactsRef} />
           <LogoStage position={logoPos} />

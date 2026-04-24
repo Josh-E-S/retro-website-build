@@ -7,14 +7,20 @@ import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audi
  * Wakeup — the unlock gate.
  *
  * Pure black screen. Power button + ESTABLISH LINK label visible from
- * the moment the page loads. Keyboard and touch also unlock as a
- * fallback. First input (click, key, touch) wins.
+ * the moment the page loads. Keyboard and touch also unlock as a fallback.
  *
- * On press, the button briefly flashes and we notify the parent after
- * 1.2s so the Stage's power-on animation can overlap with the hand-off.
+ * Audio boot strategy:
+ *   1. Engine is created on the *first* user input (mousemove, keydown,
+ *      touchstart) — this is a valid user gesture so the AudioContext
+ *      can start running. At this point we start the pre-start keyboard
+ *      loop at low volume. The player hears "someone is typing in
+ *      another room" while they decide whether to press the button.
+ *   2. On the button press (or any other input after the first), the
+ *      pre-start loop fades out and the engine handle is passed up to
+ *      Experience via onUnlock. The main experience takes over.
  *
  * Latency from mount to first input persists to localStorage as
- * response_latency_ms for later flows to reference.
+ * response_latency_ms.
  */
 
 type Props = {
@@ -27,6 +33,23 @@ export function Wakeup({ onUnlock }: Props) {
   const mountedAt = useRef(performance.now())
   const [unlocked, setUnlocked] = useState(false)
   const [pressed, setPressed] = useState(false)
+  // Engine is created on first input (any gesture); stored here so the
+  // button press can reuse the same instance for the handoff to Experience.
+  const engineRef = useRef<Promise<AudioEngineHandle> | null>(null)
+
+  const ensureEngine = (): Promise<AudioEngineHandle> => {
+    if (!engineRef.current) {
+      engineRef.current = createAudioEngine().then((engine) => {
+        // Kick the pre-start keyboard-in-another-room loop as soon as
+        // the engine is ready. If the player is quick, they may press
+        // the button before this resolves — that's fine, the loop just
+        // never audibly started.
+        engine.startPreStartLoop(600)
+        return engine
+      })
+    }
+    return engineRef.current
+  }
 
   const triggerUnlock = () => {
     if (unlocked) return
@@ -38,23 +61,33 @@ export function Wakeup({ onUnlock }: Props) {
     }
     setPressed(true)
     setUnlocked(true)
-    // Create the AudioContext inside the user gesture — Safari requires
-    // it, Chrome allows deferred creation but the synchronous path is
-    // safer. Preload runs asynchronously inside the engine.
-    const audioPromise = createAudioEngine()
-    audioPromise.then((audio) => {
-      window.setTimeout(() => onUnlock(latency, audio), 900)
+    // Reuse or create the engine; stop the pre-start loop; hand off.
+    void ensureEngine().then((engine) => {
+      engine.stopPreStartLoop(400)
+      window.setTimeout(() => onUnlock(latency, engine), 900)
     })
   }
 
   useEffect(() => {
     if (unlocked) return
-    const handler = () => triggerUnlock()
-    window.addEventListener("keydown", handler, { once: true })
-    window.addEventListener("touchstart", handler, { once: true, passive: true })
+    // Boot the engine on any input so the pre-start loop starts before
+    // the user commits to the button. These handlers run once each and
+    // only matter until triggerUnlock fires.
+    const bootOnInput = () => {
+      void ensureEngine()
+    }
+    window.addEventListener("mousemove", bootOnInput, { once: true, passive: true })
+    window.addEventListener("touchstart", bootOnInput, { once: true, passive: true })
+
+    // Keyboard + touch also fully unlock as a fallback path.
+    const unlockOnInput = () => triggerUnlock()
+    window.addEventListener("keydown", unlockOnInput, { once: true })
+    window.addEventListener("touchstart", unlockOnInput, { once: true, passive: true })
     return () => {
-      window.removeEventListener("keydown", handler)
-      window.removeEventListener("touchstart", handler)
+      window.removeEventListener("mousemove", bootOnInput)
+      window.removeEventListener("touchstart", bootOnInput)
+      window.removeEventListener("keydown", unlockOnInput)
+      window.removeEventListener("touchstart", unlockOnInput)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlocked])
