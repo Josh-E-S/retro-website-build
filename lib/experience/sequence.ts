@@ -40,6 +40,10 @@ export type Cue =
   | { id: string; t: number; type: "clear" }
   | { id: string; t: number; type: "cursor_blink"; on: boolean }
   | { id: string; t: number; type: "eve_line"; audio: string; textLines: string[]; cps: number; holdAfterMs?: number }
+  | { id: string; t: number; type: "artifacts_ambient"; on: boolean }
+  | { id: string; t: number; type: "glitch"; intensity?: "normal" | "hard" }
+  | { id: string; t: number; type: "symbol"; kind?: "heart" | "x" | "robot" }
+  | { id: string; t: number; type: "clump"; subtle?: boolean }
 
 export type AmbientLayer = "ballast" | "hvac" | "crt_whine" | "fan"
 
@@ -93,6 +97,9 @@ export const sequence: Cue[] = [
   { id: "crt_power_audio", t: 6.5, type: "audio", file: "crt_power_on.wav", volume: -8, pan: 0 },
   { id: "crt_power_visual", t: 6.5, type: "crt_power_on" },
   { id: "amb_fan", t: 6.5, type: "ambient_start", layer: "fan", target: -28, fadeMs: 1500 },
+
+  // t=7.5 — baseline tetris corruption starts running in the background
+  { id: "artifacts_on", t: 7.5, type: "artifacts_ambient", on: true },
 
   // t=8.0 — big centered header stanza
   {
@@ -181,6 +188,7 @@ export const sequence: Cue[] = [
   // declared here so the audio layer can drop a ballast dip + relay tick
   // during the wait without extra wiring.
   { id: "wait_ballast_dip", t: 35.0, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
+  { id: "wait_subtle_clump", t: 35.4, type: "clump", subtle: true },
   { id: "wait_tick", t: 37.0, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
 
   // ── Eve's first line, broken into individual stanzas ──────────────────
@@ -253,6 +261,10 @@ export const sequence: Cue[] = [
     cps: 32,
     holdAfterMs: 1000,
   },
+  // Hard glitch right as the word "disorientation" lands. The visual
+  // contradicts Eve's calm — the screen momentarily loses integrity the
+  // instant she names the thing the player is feeling.
+  { id: "glitch_disorientation", t: 62.8, type: "glitch", intensity: "hard" },
   {
     id: "eve_2b",
     t: 66.2,
@@ -262,6 +274,9 @@ export const sequence: Cue[] = [
     cps: 22,
     holdAfterMs: 1200,
   },
+  // A robot face appears somewhere on screen for ~500ms right after
+  // "It will pass." The player will question whether they saw it.
+  { id: "symbol_after_pass", t: 69.4, type: "symbol", kind: "robot" },
   {
     id: "eve_2c",
     t: 71.5,
@@ -333,6 +348,7 @@ export const sequence: Cue[] = [
     cps: 24,
     holdAfterMs: 1100,
   },
+  { id: "glitch_no_wrong", t: 103.4, type: "glitch", intensity: "normal" },
   {
     id: "eve_2i",
     t: 105.8,

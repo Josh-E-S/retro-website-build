@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Wakeup } from "./Wakeup"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
+import { Artifacts, type ArtifactsHandle } from "./Artifacts"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
 
@@ -11,18 +12,14 @@ import { sequence, type Cue } from "@/lib/experience/sequence"
  * Experience — top-level client component.
  *
  * State machine:
- *   "wakeup"  — subjective blur come-to; first input unlocks
- *   "running" — Stage mounted; clock drives cues into Terminal + visual state
+ *   "wakeup"  — subjective blur come-to; center button unlocks
+ *   "running" — Stage mounted; clock drives cues into Terminal + Artifacts
  *
- * Cue dispatch:
- *   - stanza       → Terminal.stanza (large centered, replaces screen)
- *   - log_line     → Terminal.pushLog (small left-aligned stack)
- *   - log_dots     → Terminal.cycleDotsOnLastLog
- *   - clear        → Terminal.clear
- *   - cursor_blink → Terminal.showBlinkingCursor
- *   - eve_line     → Terminal.stanza (no audio yet — Phase 3)
- *   - crt_power_on → Stage poweredOn
- *   - audio / ambient_*  → no-ops until Phase 3
+ * Cue dispatch (Phase 2b):
+ *   - stanza / log_line / log_dots / clear / cursor_blink / eve_line → Terminal
+ *   - artifacts_ambient / glitch / symbol / clump → Artifacts
+ *   - crt_power_on → Stage
+ *   - audio / ambient_* → no-ops until Phase 3
  */
 
 type Phase = "wakeup" | "running"
@@ -31,10 +28,12 @@ export function Experience() {
   const [phase, setPhase] = useState<Phase>("wakeup")
   const [poweredOn, setPoweredOn] = useState(false)
   const terminalRef = useRef<TerminalHandle | null>(null)
+  const artifactsRef = useRef<ArtifactsHandle | null>(null)
   const cursorRef = useRef(0)
 
   const handleCue = useCallback((cue: Cue) => {
     const term = terminalRef.current
+    const art = artifactsRef.current
     switch (cue.type) {
       case "crt_power_on":
         setPoweredOn(true)
@@ -63,6 +62,18 @@ export function Experience() {
           cue.textLines.map((text, i) => ({ id: `${cue.id}_${i}`, text })),
           { cps: cue.cps, size: "display", holdAfterMs: cue.holdAfterMs },
         )
+        break
+      case "artifacts_ambient":
+        if (art) (cue.on ? art.ambient.start() : art.ambient.stop())
+        break
+      case "glitch":
+        if (art) art.glitch(cue.intensity)
+        break
+      case "symbol":
+        if (art) art.symbol(cue.kind)
+        break
+      case "clump":
+        if (art) art.clump({ subtle: cue.subtle })
         break
       case "audio":
       case "ambient_start":
@@ -105,6 +116,7 @@ export function Experience() {
       {phase === "running" && (
         <Stage poweredOn={poweredOn}>
           <Terminal onReady={handleTerminalReady} />
+          <Artifacts ref={artifactsRef} />
         </Stage>
       )}
     </main>

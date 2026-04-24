@@ -173,7 +173,7 @@ export function Terminal({ onReady }: Props) {
             fontSize: stanzaFontSize,
             lineHeight: stanzaLineHeight,
             letterSpacing: "0.01em",
-            color: "var(--ink)",
+            color: size === "display" ? "var(--ink-deep)" : "var(--ink)",
             maxWidth: "24ch",
             textWrap: "balance" as never,
           }}

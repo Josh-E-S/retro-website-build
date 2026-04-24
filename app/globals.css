@@ -12,10 +12,14 @@
   --paper: #ece8dc;
   --paper-deep: #dfd9c8;
   --ink: #1f2a37;
+  --ink-deep: #0f1720;
   --ink-soft: #2e3a48;
   --ink-muted: #5b6a7b;
   --accent: #6f8ea8;
   --accent-soft: rgba(111, 142, 168, 0.35);
+  --cyan: #1fb6c1;
+  --magenta: #c84b8f;
+  --yellow: #d9b24a;
   --terminal-dim: #8a8578;
   --terminal-font: "Courier New", "Courier Prime", Courier, ui-monospace, monospace;
   --display-font: "Courier New", "Courier Prime", Courier, ui-monospace, monospace;
@@ -37,7 +41,6 @@ body {
   background: #000000;
   color: var(--ink);
   font-family: var(--terminal-font);
-  cursor: none;
 }
 
 html {

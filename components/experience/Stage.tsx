@@ -104,7 +104,7 @@ export function Stage({ poweredOn, children }: Props) {
             inset: 0,
             pointerEvents: "none",
             backgroundImage:
-              "repeating-linear-gradient(to bottom, rgba(31,42,55,0.09) 0px, rgba(31,42,55,0.09) 1px, transparent 1px, transparent 3px)",
+              "repeating-linear-gradient(to bottom, rgba(31,42,55,0.07) 0px, rgba(31,42,55,0.07) 1px, transparent 1px, transparent 3px)",
             mixBlendMode: "multiply",
             zIndex: 2,
           }}
@@ -138,7 +138,7 @@ export function Stage({ poweredOn, children }: Props) {
             inset: 0,
             pointerEvents: "none",
             background:
-              "radial-gradient(ellipse at center, transparent 55%, rgba(31,42,55,0.14) 90%, rgba(31,42,55,0.26) 100%)",
+              "radial-gradient(ellipse at center, transparent 55%, rgba(31,42,55,0.12) 90%, rgba(31,42,55,0.22) 100%)",
             zIndex: 4,
           }}
         />
