@@ -44,6 +44,16 @@ export type Cue =
        *  does a scrambled-char arrival with chromatic offset, settles clean. */
       variant?: "type" | "glitch_resolve"
     }
+  | {
+      id: string
+      t: number
+      type: "glitch_subtitle"
+      /** Persistent-glitch line shown below whatever stanza is already on
+       *  screen. Characters continuously re-scramble; heavy chromatic
+       *  offset. Cleared by the next clear / stanza. */
+      text: string
+      durationMs?: number
+    }
   | { id: string; t: number; type: "log_line"; line: TypewriterLine; cps: number }
   | { id: string; t: number; type: "log_dots"; base: string; durationMs: number }
   | { id: string; t: number; type: "clear" }
@@ -97,6 +107,13 @@ const initLine: TypewriterLine = {
 // before the logo appears.
 
 export const sequence: Cue[] = [
+  // t=0 — dos-beep confirmation + Pentium boot tone (~5.2s tail) land
+  // the instant the Stage mounts. Pentium runs under the CRT power-on
+  // animation and the WELCOME scramble, ending just before the boot
+  // checklist starts typing.
+  { id: "boot_beep", t: 0.0, type: "audio", file: "crt_screen_clear.wav", volume: -2, pan: 0 },
+  { id: "boot_pentium", t: 0.16, type: "audio", file: "pentium_boot.wav", volume: -1, pan: 0 },
+
   // t=0.2 — three fuses overlap the Stage power-on flicker
   { id: "fuse_1", t: 0.2, type: "audio", file: "fuse_01.wav", volume: -12, pan: -0.2 },
   { id: "fuse_2", t: 0.6, type: "audio", file: "fuse_02.wav", volume: -14, pan: 0.15 },
@@ -114,29 +131,13 @@ export const sequence: Cue[] = [
   // Lobby music bed fades in alongside the ambient layers.
   { id: "music_start", t: 1.2, type: "music_start", fadeMs: 2400 },
 
-  // t=1.2 — logo comes up, big and centered, heartbeat pulse
-  { id: "logo_center", t: 1.2, type: "logo_position", position: "center" },
-
-  // t=4.8 — logo tucks to top-left BEFORE any text appears, so the
-  // boot checklist (and everything after) has a clean centered stage.
-  { id: "logo_to_corner", t: 4.8, type: "logo_position", position: "corner" },
-
-  // t=5.0 — boot checklist begins (center-aligned small text)
-  { id: "log_memory", t: 5.0, type: "log_line", line: memoryLine, cps: 30 },
-  { id: "log_network", t: 6.0, type: "log_line", line: networkLine, cps: 30 },
-  { id: "log_audio", t: 7.0, type: "log_line", line: audioLine, cps: 30 },
-  { id: "log_telemetry", t: 8.0, type: "log_line", line: behavioralLine, cps: 30 },
-  { id: "log_session", t: 9.1, type: "log_line", line: sessionLine, cps: 30 },
-
-  // t=10.4 — initializing + dots loop
-  { id: "log_init", t: 10.4, type: "log_line", line: initLine, cps: 30 },
-  { id: "log_init_dots", t: 11.5, type: "log_dots", base: "INITIALIZING CANDIDATE INTERFACE", durationMs: 1400 },
-
-  // t=13.0 — clear, welcome stanza arriving as a glitch-resolve
-  { id: "clear_to_welcome", t: 13.0, type: "clear" },
+  // t=5.2 — WELCOME stanza glitch-resolves into place. This is the
+  // brand beat: two lines of dark ink on cream paper, scrambled chars
+  // that progressively lock in with heavy chromatic offset, two shakes
+  // at the end, then a long hold. Terminal renders the variant.
   {
-    id: "welcome_title",
-    t: 13.3,
+    id: "welcome",
+    t: 5.2,
     type: "stanza",
     lines: [
       { id: "w_1", text: "WELCOME TO" },
@@ -145,59 +146,49 @@ export const sequence: Cue[] = [
     cps: 22,
     size: "display",
     variant: "glitch_resolve",
-    // Hold longer — this is the beat that sets the tone for the whole
-    // experience. Spec called 1.8s; we double+ it so the phrase lands.
-    holdAfterMs: 5200,
+    // Long hold so the phrase actually lands — 5.5s reads as "this is
+    // the title card," not "this is a flash."
+    holdAfterMs: 5500,
   },
+
+  // t=8.2 — slogan fades in below the title, heavy glitching. Runs
+  // until the clear for boot. Appears after the main title has held
+  // clean for ~1s so the tone lands before corrupting.
   {
-    id: "welcome_sub",
-    // Delayed ~3s to accommodate the longer hold above.
-    t: 20.4,
-    type: "stanza",
-    lines: [
-      { id: "ws_1", text: "A research initiative of" },
-      { id: "ws_2", text: "Choice Industries" },
-    ],
-    cps: 32,
-    size: "body",
-    holdAfterMs: 1800,
+    id: "welcome_slogan",
+    t: 8.2,
+    type: "glitch_subtitle",
+    text: "Artificial Intelligence You Can Trust",
+    durationMs: 2800,
   },
-  {
-    id: "welcome_notice",
-    t: 24.1,
-    type: "stanza",
-    lines: [
-      { id: "wn_1", text: "Your candidate session" },
-      { id: "wn_2", text: "will begin momentarily." },
-    ],
-    cps: 32,
-    size: "body",
-    holdAfterMs: 1500,
-  },
-  {
-    id: "remain",
-    t: 27.9,
-    type: "stanza",
-    lines: [{ id: "r_1", text: "Please remain at your desk." }],
-    cps: 32,
-    size: "body",
-    holdAfterMs: 600,
-  },
-  { id: "cursor_on", t: 29.7, type: "cursor_blink", on: true },
+
+  // t=11.0 — clear, boot checklist begins
+  { id: "clear_for_boot", t: 11.0, type: "clear" },
+  { id: "log_memory", t: 11.2, type: "log_line", line: memoryLine, cps: 30 },
+  { id: "log_network", t: 12.2, type: "log_line", line: networkLine, cps: 30 },
+  { id: "log_audio", t: 13.2, type: "log_line", line: audioLine, cps: 30 },
+  { id: "log_telemetry", t: 14.2, type: "log_line", line: behavioralLine, cps: 30 },
+  { id: "log_session", t: 15.3, type: "log_line", line: sessionLine, cps: 30 },
+
+  // t=16.6 — initializing + dots loop
+  { id: "log_init", t: 16.6, type: "log_line", line: initLine, cps: 30 },
+  { id: "log_init_dots", t: 17.7, type: "log_dots", base: "INITIALIZING CANDIDATE INTERFACE", durationMs: 1400 },
+
+  // After the INITIALIZING dots loop finishes at t=19.1, cursor blinks
+  // for the intentional 4-second silence, then Eve speaks.
+  { id: "cursor_on", t: 19.4, type: "cursor_blink", on: true },
 
   // Intentional 4-second silence
-  { id: "wait_ballast_dip", t: 30.9, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
-  { id: "wait_subtle_clump", t: 31.3, type: "clump", subtle: true },
-  // Trapped-avatar burst in the silence before Eve speaks — the player
-  // hears the voice of something already in the system.
-  { id: "wait_trapped", t: 31.9, type: "trapped_avatar" },
-  { id: "wait_tick", t: 32.9, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
+  { id: "wait_ballast_dip", t: 20.4, type: "ambient_dip", layer: "ballast", depth: -8, durationMs: 200 },
+  { id: "wait_subtle_clump", t: 20.8, type: "clump", subtle: true },
+  // wait_trapped removed — the intro video carries the AI presence now.
+  { id: "wait_tick", t: 22.4, type: "audio", file: "ambient_tick_01.wav", volume: -22, pan: 0.15 },
 
   // ── Eve's first line ─────────────────────────────────────────────────
-  { id: "cursor_off_before_eve_1", t: 34.8, type: "cursor_blink", on: false },
+  { id: "cursor_off_before_eve_1", t: 24.0, type: "cursor_blink", on: false },
   {
     id: "eve_1a",
-    t: 35.0,
+    t: 24.2,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["Hello.", "You're awake."],
@@ -206,7 +197,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1b",
-    t: 39.2,
+    t: 28.4,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["My name is Eve."],
@@ -215,7 +206,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1c",
-    t: 42.2,
+    t: 31.4,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["I'm here to help you", "through your enrollment."],
@@ -224,7 +215,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1d",
-    t: 46.2,
+    t: 35.4,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["Please take a moment", "to orient yourself."],
@@ -233,7 +224,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_1e",
-    t: 50.2,
+    t: 39.4,
     type: "eve_line",
     audio: "eve_line_01.mp3",
     textLines: ["There is no hurry."],
@@ -244,7 +235,7 @@ export const sequence: Cue[] = [
   // ── Eve's second line ────────────────────────────────────────────────
   {
     id: "eve_2a",
-    t: 57.5,
+    t: 46.7,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -255,20 +246,20 @@ export const sequence: Cue[] = [
     cps: 32,
     holdAfterMs: 1000,
   },
-  { id: "glitch_disorientation", t: 59.8, type: "glitch", intensity: "hard" },
+  { id: "glitch_disorientation", t: 49.0, type: "glitch", intensity: "hard" },
   {
     id: "eve_2b",
-    t: 63.2,
+    t: 52.4,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["This is common.", "It will pass."],
     cps: 22,
     holdAfterMs: 1200,
   },
-  { id: "symbol_after_pass", t: 66.4, type: "symbol", kind: "robot" },
+  { id: "symbol_after_pass", t: 55.6, type: "symbol", kind: "robot" },
   {
     id: "eve_2c",
-    t: 68.5,
+    t: 57.7,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -281,7 +272,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2d",
-    t: 75.5,
+    t: 64.7,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: [
@@ -295,7 +286,7 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2e",
-    t: 83.5,
+    t: 72.7,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["If at any point you need a moment,", "you may take one."],
@@ -304,20 +295,17 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2f",
-    t: 88.8,
+    t: 78.0,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["The study proceeds at your pace."],
     cps: 28,
     holdAfterMs: 1800,
   },
-  // Another trapped voice right after "proceeds at your pace" — hard cut
-  // against Eve's calm, the way the earlier glitch at "disorientation"
-  // works. Timed in the beat between her lines.
-  { id: "trapped_during_eve", t: 91.4, type: "trapped_avatar" },
+  // trapped_during_eve removed — intro video covers that role now.
   {
     id: "eve_2g",
-    t: 93.8,
+    t: 83.0,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["Before we begin,", "I'll need to confirm a few details."],
@@ -326,17 +314,17 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2h",
-    t: 98.8,
+    t: 88.0,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["There are no wrong answers."],
     cps: 24,
     holdAfterMs: 1100,
   },
-  { id: "glitch_no_wrong", t: 100.4, type: "glitch", intensity: "normal" },
+  { id: "glitch_no_wrong", t: 89.6, type: "glitch", intensity: "normal" },
   {
     id: "eve_2i",
-    t: 102.8,
+    t: 92.0,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["This is just to help me understand", "how best to support you today."],
@@ -345,12 +333,12 @@ export const sequence: Cue[] = [
   },
   {
     id: "eve_2j",
-    t: 109.0,
+    t: 98.2,
     type: "eve_line",
     audio: "eve_line_02.mp3",
     textLines: ["Are you ready to continue?"],
     cps: 22,
     holdAfterMs: 0,
   },
-  { id: "cursor_on_after_eve", t: 113.0, type: "cursor_blink", on: true },
+  { id: "cursor_on_after_eve", t: 102.2, type: "cursor_blink", on: true },
 ]

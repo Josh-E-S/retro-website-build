@@ -5,8 +5,8 @@ import { Wakeup } from "./Wakeup"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
 import { Artifacts, type ArtifactsHandle } from "./Artifacts"
-import { AvatarFlash, type AvatarFlashHandle } from "./AvatarFlash"
-import { LogoStage, type LogoPosition as LogoStatePosition } from "./LogoStage"
+import { IntroVideo } from "./IntroVideo"
+import { QuoteRotator } from "./QuoteRotator"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
 import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audio/engine"
@@ -15,20 +15,29 @@ import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audi
  * Experience — top-level client component.
  *
  * State machine:
- *   "wakeup"  — black screen with ESTABLISH LINK power button
- *   "running" — Stage mounted (auto-plays power-on animation); clock
- *               drives cues into Terminal / Artifacts / LogoStage
+ *   "wakeup"  — amber title + prompt + cursor. Pre-audio.
+ *   "intro"   — Stage mounted, ambient/music/artifacts running, intro.mp4
+ *               looping at 50% over the top. The clock is NOT started yet
+ *               — boot sequence and Eve are deferred until the player
+ *               commits a second time.
+ *   "running" — Second input received. Intro video unmounts, the clock
+ *               starts at t=0 and the welcome stanza → boot checklist →
+ *               Eve sequence plays out as before.
  */
 
-type Phase = "wakeup" | "running"
+type Phase = "wakeup" | "intro" | "running"
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("wakeup")
-  const [logoPos, setLogoPos] = useState<LogoStatePosition>("hidden")
   const terminalRef = useRef<TerminalHandle | null>(null)
+  // State mirror so children that need to observe the handle (e.g.
+  // QuoteRotator) can re-render once the Terminal is ready.
+  const [terminalHandle, setTerminalHandle] = useState<TerminalHandle | null>(null)
   const artifactsRef = useRef<ArtifactsHandle | null>(null)
-  const avatarFlashRef = useRef<AvatarFlashHandle | null>(null)
   const audioRef = useRef<AudioEngineHandle | null>(null)
+  // Synchronous guard so a same-tick keydown+pointerdown pair can't
+  // double-trigger the intro→running transition.
+  const introUnlockedRef = useRef(false)
   const cursorRef = useRef(0)
   // The single live clock. Guards against Strict Mode double-mount or any
   // effect-rerun spawning a parallel clock: if one already exists, the
@@ -61,6 +70,9 @@ export function Experience() {
       case "clear":
         if (term) void term.clear()
         break
+      case "glitch_subtitle":
+        if (term) term.glitchSubtitle({ text: cue.text, durationMs: cue.durationMs })
+        break
       case "cursor_blink":
         if (term) term.showBlinkingCursor(cue.on)
         break
@@ -89,7 +101,7 @@ export function Experience() {
         if (art) art.clump({ subtle: cue.subtle })
         break
       case "logo_position":
-        setLogoPos(cue.position)
+        // Logo is removed from the experience for now — cue is a no-op.
         break
       case "audio": {
         // Route the declared spec filenames to the available sound bank.
@@ -99,7 +111,9 @@ export function Experience() {
         if (cue.file.startsWith("fuse_")) {
           a.playOneShot("fuse", { gain: linGain, pan: cue.pan })
         } else if (cue.file.startsWith("ambient_tick") || cue.file.startsWith("crt_screen_clear")) {
-          a.playOneShot("tick", { gain: linGain, pan: cue.pan })
+          a.playOneShot("beep", { gain: linGain, pan: cue.pan })
+        } else if (cue.file.startsWith("pentium_boot")) {
+          a.playOneShot("pentiumBoot", { gain: linGain, pan: cue.pan })
         } else {
           // crt_power_on.wav and similar — no asset yet; drop silently.
         }
@@ -126,10 +140,9 @@ export function Experience() {
         if (audioRef.current) audioRef.current.stopMusic(cue.fadeMs)
         break
       case "trapped_avatar":
-        if (audioRef.current) audioRef.current.playTrappedAvatar()
-        // Pair audio with the full-viewport avatar image + hard glitch.
-        avatarFlashRef.current?.flash(8000)
-        artifactsRef.current?.glitch("hard")
+        // Trapped-avatar audio + image overlay are disabled — the intro
+        // video carries the AI-presence visuals/audio now. Cue is a no-op
+        // until/unless we wire something else for these moments.
         break
     }
     // eslint-disable-next-line no-console
@@ -176,8 +189,80 @@ export function Experience() {
 
   const handleUnlock = useCallback((_latencyMs: number, audio: AudioEngineHandle) => {
     audioRef.current = audio
-    setPhase("running")
+    // Wake-up pacing. From click:
+    //   0ms        — power-on SFX (beep / Pentium / fuses). Black screen.
+    //   ~400ms     — distant ambient (HVAC + fan) start rising over 3s.
+    //                Player hears "I'm somewhere" — no light yet.
+    //   240–5000ms — pure black, just sounds. ~4.7s of disorientation.
+    //   5000ms     — intro video begins fading in over 3s (handled by
+    //                IntroVideo's own internal delay).
+    //   5000ms     — closer ambient (ballast, CRT hum) join, 3s fade.
+    //   ~9000ms    — lobby music begins fading in over 3.5s, after the
+    //                video is established.
+    //   ~12500ms   — first quote types in (handled by QuoteRotator).
+
+    // 0ms — power-on SFX immediately.
+    audio.playOneShot("beep", { gain: Math.pow(10, -2 / 20), pan: 0 })
+    window.setTimeout(() => audio.playOneShot("pentiumBoot", { gain: Math.pow(10, -1 / 20), pan: 0 }), 160)
+    window.setTimeout(() => audio.playOneShot("fuse", { gain: Math.pow(10, -12 / 20), pan: -0.2 }), 200)
+    window.setTimeout(() => audio.playOneShot("fuse", { gain: Math.pow(10, -14 / 20), pan: 0.15 }), 600)
+
+    // ~400ms — distant ambient layers only. The player hears the room
+    // around them before they see it.
+    window.setTimeout(() => {
+      audio.startAmbient("hvac", 3000)
+      audio.startAmbient("fan", 3000)
+    }, 400)
+
+    // ~5000ms — closer ambient layers join just as the video starts to
+    // bleed in. The room sharpens around the same moment the eyes do.
+    window.setTimeout(() => {
+      audio.startAmbient("ballast", 3000)
+      audio.startAmbient("crtHum", 3500)
+    }, 5000)
+
+    // ~9000ms — music fades up after the video is visible. Long fade
+    // so it doesn't punch in.
+    window.setTimeout(() => audio.startMusic(3500), 9000)
+
+    setPhase("intro")
   }, [])
+
+  // Start artifacts ambient bed when intro mounts so glitches/symbols/
+  // clumps run under the intro video. The clock isn't running during
+  // intro, so the artifacts_on cue would never fire on its own.
+  useEffect(() => {
+    if (phase !== "intro") return
+    const id = window.setTimeout(() => {
+      artifactsRef.current?.ambient.start()
+    }, 200)
+    return () => window.clearTimeout(id)
+  }, [phase])
+
+  // Second input during intro → advance to running. The same gestures the
+  // Wakeup accepts (space / any key / pointer / touch) work here.
+  useEffect(() => {
+    if (phase !== "intro") return
+    const advance = () => {
+      if (introUnlockedRef.current) return
+      introUnlockedRef.current = true
+      setPhase("running")
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "Spacebar" || e.code === "Space") {
+        e.preventDefault()
+      }
+      advance()
+    }
+    window.addEventListener("keydown", onKey)
+    window.addEventListener("pointerdown", advance)
+    window.addEventListener("touchstart", advance, { passive: true })
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      window.removeEventListener("pointerdown", advance)
+      window.removeEventListener("touchstart", advance)
+    }
+  }, [phase])
 
   // Dispose the audio engine when the component tears down.
   useEffect(() => {
@@ -191,18 +276,22 @@ export function Experience() {
 
   const handleTerminalReady = useCallback((h: TerminalHandle) => {
     terminalRef.current = h
+    setTerminalHandle(h)
   }, [])
 
   return (
     <main aria-hidden="true">
       {phase === "wakeup" && <Wakeup onUnlock={handleUnlock} />}
-      {phase === "running" && (
-        <Stage>
+      {(phase === "intro" || phase === "running") && (
+        <Stage dim={phase === "intro"}>
+          {/* Terminal mounts in both phases — it stays empty during intro
+              (no cues are firing) so it's just a transparent layer ready
+              to receive the welcome stanza when the clock starts. */}
           <Terminal
             onReady={handleTerminalReady}
-            avoidCornerLogo={logoPos === "corner"}
             onTypingStart={(kind) => audioRef.current?.startTyping(kind)}
             onTypingEnd={() => audioRef.current?.stopTyping()}
+            dim={phase === "intro"}
           />
           <Artifacts
             ref={artifactsRef}
@@ -225,8 +314,11 @@ export function Experience() {
               }
             }}
           />
-          <LogoStage position={logoPos} />
-          <AvatarFlash ref={avatarFlashRef} />
+          {/* Intro video at 50% over the stage. Removed on phase advance,
+              so its decoder is freed once the player commits. */}
+          {phase === "intro" && <IntroVideo />}
+          {/* Quote rotator drives the Terminal during intro only. */}
+          {phase === "intro" && <QuoteRotator terminal={terminalHandle} />}
         </Stage>
       )}
     </main>

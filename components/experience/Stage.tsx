@@ -27,11 +27,17 @@ import { AnimatedNoise } from "./AnimatedNoise"
 
 type Props = {
   children: ReactNode
+  /**
+   * "intro" dims the paper backdrop slightly so the intro video reads
+   * stronger without competing with the cream surface. "running" leaves
+   * the paper at full brightness for normal terminal text legibility.
+   */
+  dim?: boolean
 }
 
 type PowerStage = 0 | 1 | 2 | 3 | 4
 
-export function Stage({ children }: Props) {
+export function Stage({ children, dim = false }: Props) {
   const [stage, setStage] = useState<PowerStage>(0)
 
   // Drive the power-on stages via chained timeouts. Each stage sets a
@@ -105,7 +111,9 @@ export function Stage({ children }: Props) {
           transition: "opacity 260ms ease-out",
         }}
       >
-        {/* Paper base */}
+        {/* Paper base — dimmed during intro via filter so the cream
+            backdrop tones down without affecting the Terminal text or
+            Artifacts layer above it. */}
         <div
           style={{
             position: "absolute",
@@ -113,8 +121,27 @@ export function Stage({ children }: Props) {
             background:
               "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55) 0%, transparent 55%), radial-gradient(ellipse at 50% 110%, var(--paper-deep) 0%, var(--paper) 60%)",
             animation: stage === 3 ? "crt-snap-flicker 240ms ease-out" : undefined,
+            filter: dim ? "brightness(0.45)" : "none",
+            transition: "filter 800ms ease-out",
           }}
         />
+
+        {/* Dim wash — extra layer of black at low opacity sits above the
+            paper but below content/intro/scanlines. Adds depth on top of
+            the paper-base brightness drop without flattening saturation. */}
+        {dim && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "#000",
+              opacity: 0.35,
+              pointerEvents: "none",
+              zIndex: 1,
+              transition: "opacity 800ms ease-out",
+            }}
+          />
+        )}
 
         {/* Content layer — cyan/magenta print-registration offset */}
         <div
