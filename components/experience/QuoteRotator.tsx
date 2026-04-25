@@ -96,11 +96,11 @@ export function QuoteRotator({ terminal }: Props) {
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
     const showOne = async () => {
-      // Initial delay — wait until the player has been "awake" for a
-      // beat. Power-on SFX → ambient bed → video bleeds in → music
-      // fades up takes ~12.5s; quotes start after that so the room
-      // settles before the transmissions begin arriving.
-      await sleep(12500)
+      // Initial delay — welcome card finishes fading in at ~1.8s
+      // (600ms delay + 1200ms fade). Hold an additional 2s after that
+      // so the player has a clean, quiet moment with the title before
+      // the first transmission arrives.
+      await sleep(3800)
       if (cancelled) return
 
       while (!cancelled) {

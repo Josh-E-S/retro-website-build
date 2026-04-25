@@ -89,6 +89,22 @@ const MUSIC = {
   lobby: withBase("/audio/music/Unattended_Lobby_entry.mp3"),
 } as const
 
+// Distant PA narration — plays during intro only. Two parts chained:
+// the short intro greets the candidate, the longer orientation plays
+// under the quote rotator until the player commits or it ends.
+const NARRATION_INTRO = "/audio/talking-sessions/intro-for-orientation.mp3"
+const NARRATION_BODY = "/audio/talking-sessions/full-orientation.mp3"
+
+// Corrupted-AI glitch voice bank. Fired as random punctuation under the
+// existing visual glitch cues so hard glitches feel like a transmission
+// breaking through, not just visual noise.
+const GLITCH_VOICE_BASE = "/audio/sound-effects/digital-artifacts"
+const GLITCH_VOICE_FILES = [
+  `${GLITCH_VOICE_BASE}/A_glitching_female-v_#1-1777102531828.mp3`,
+  `${GLITCH_VOICE_BASE}/A_glitching_female-v_#3-1777102531850.mp3`,
+  `${GLITCH_VOICE_BASE}/A_glitching_female-v_#4-1777102566410.mp3`,
+]
+
 // ── Gain defaults (linear 0–1). Tuned on first listen; retune freely. ─
 
 const DEFAULT_LAYER_GAIN = {
@@ -104,6 +120,10 @@ const DEFAULT_LAYER_GAIN = {
   preStartFan: 0.5,
   keystroke: 0.3,
   trappedAvatar: 0.55,
+  // Distant PA narration sits below music — heard but not focal.
+  narration: .85,
+  // Glitch-voice fragments — punchier than ambient, quieter than Eve.
+  glitchVoice: 0.5,
   /** Gain multiplier applied to the music bus while Eve is speaking. */
   musicDuckMul: 0.35,
 } as const
@@ -130,6 +150,12 @@ export type AudioEngineHandle = {
   startMusic: (fadeMs?: number) => void
   /** Stop the music bed. */
   stopMusic: (fadeMs?: number) => void
+  /** Start the distant-PA narration (single play, intro only). */
+  startNarration: (fadeMs?: number) => void
+  /** Stop the narration immediately with a short fade. */
+  stopNarration: (fadeMs?: number) => void
+  /** Fire one of the corrupted-voice samples; cooldown-gated internally. */
+  playGlitchVoice: (opts?: { gain?: number; pan?: number }) => void
   /** Temporarily duck music (usually driven internally by playEve). */
   duckMusic: (depth: number, fadeMs?: number) => void
   /** Release the duck back to full level. */
@@ -315,6 +341,10 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   musicBus.gain.value = 0
   musicBus.connect(master)
 
+  const narrationBus = ctx.createGain()
+  narrationBus.gain.value = 0
+  narrationBus.connect(master)
+
   const preStartBus = ctx.createGain()
   preStartBus.gain.value = 0
   preStartBus.connect(master)
@@ -332,6 +362,16 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
   // Music buffer + currently-playing source
   let musicBuffer: AudioBuffer | null = null
   let musicSource: AudioBufferSourceNode | null = null
+
+  // Narration: two-part chain. Intro plays first; on its natural end we
+  // queue the body. Either part can be in flight at any one time, so a
+  // single source slot is enough.
+  let narrationIntroBuffer: AudioBuffer | null = null
+  let narrationBodyBuffer: AudioBuffer | null = null
+  let narrationSource: AudioBufferSourceNode | null = null
+  // True once stopNarration has been called — guards the auto-chain so
+  // a stop mid-intro doesn't start the body afterwards.
+  let narrationStopped = false
 
   // Pre-start: HVAC + DC fan. Both layers play through their own sub-
   // gains so we can mix the bed while using the shared preStartBus as
@@ -356,6 +396,11 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
 
   // Trapped-avatar buffers (populated by preload).
   const trappedAvatarBuffers: AudioBuffer[] = []
+
+  // Glitch-voice buffers (populated by preload).
+  const glitchVoiceBuffers: AudioBuffer[] = []
+  // Cooldown timestamp so consecutive hard glitches don't stack samples.
+  let lastGlitchVoiceAt = -Infinity
 
   // Kick preloads
   let ready = false
@@ -413,6 +458,33 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
         ),
       )
       for (const b of loads) if (b) trappedAvatarBuffers.push(b)
+    })()
+
+    const narrationPromise = (async () => {
+      const [intro, body] = await Promise.all([
+        fetchBuffer(ctx, NARRATION_INTRO).catch((err) => {
+          console.warn(`[audio] narration intro load failed:`, err)
+          return null
+        }),
+        fetchBuffer(ctx, NARRATION_BODY).catch((err) => {
+          console.warn(`[audio] narration body load failed:`, err)
+          return null
+        }),
+      ])
+      narrationIntroBuffer = intro
+      narrationBodyBuffer = body
+    })()
+
+    const glitchVoicePromise = (async () => {
+      const loads = await Promise.all(
+        GLITCH_VOICE_FILES.map((u) =>
+          fetchBuffer(ctx, u).catch((err) => {
+            console.warn(`[audio] glitch-voice load failed: ${u}`, err)
+            return null
+          }),
+        ),
+      )
+      for (const b of loads) if (b) glitchVoiceBuffers.push(b)
     })()
 
     const ambientPromises: Array<Promise<void>> = []
@@ -485,6 +557,8 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       preStartHvacPromise,
       preStartFanPromise,
       trappedAvatarPromise,
+      narrationPromise,
+      glitchVoicePromise,
     ])
     ready = true
   }
@@ -562,6 +636,109 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     musicBus.gain.cancelScheduledValues(now)
     musicBus.gain.setValueAtTime(musicBus.gain.value, now)
     musicBus.gain.linearRampToValueAtTime(DEFAULT_LAYER_GAIN.music, now + fadeMs / 1000)
+  }
+
+  // Internal — play one buffer through the narration bus and call back
+  // when it ends naturally. Doesn't touch the bus gain; the wrapper
+  // schedules the fade once at startNarration time so the chain reads
+  // as one continuous transmission.
+  const playNarrationBuffer = (buf: AudioBuffer, onNaturalEnd: () => void) => {
+    if (ctx.state === "suspended") void ctx.resume()
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(narrationBus)
+    src.start()
+    narrationSource = src
+    src.onended = () => {
+      const wasCurrent = narrationSource === src
+      if (wasCurrent) narrationSource = null
+      try { src.disconnect() } catch { /* noop */ }
+      // Only chain on a natural end — if stopNarration replaced the
+      // source, narrationSource will already be null/different and we
+      // should leave it alone.
+      if (wasCurrent && !narrationStopped) onNaturalEnd()
+    }
+  }
+
+  const startNarration: AudioEngineHandle["startNarration"] = (fadeMs = 2500) => {
+    if (!narrationIntroBuffer && !narrationBodyBuffer) {
+      void preloadPromise.then(() => {
+        if (narrationIntroBuffer || narrationBodyBuffer) startNarration(fadeMs)
+      })
+      return
+    }
+    if (narrationSource) return // already playing
+    narrationStopped = false
+
+    // Bring the bus up once. The chain inherits the same level — both
+    // intro and body play at the established narration gain.
+    const now = ctx.currentTime
+    narrationBus.gain.cancelScheduledValues(now)
+    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+    narrationBus.gain.linearRampToValueAtTime(
+      DEFAULT_LAYER_GAIN.narration,
+      now + fadeMs / 1000,
+    )
+
+    const playBody = () => {
+      if (narrationStopped) return
+      if (!narrationBodyBuffer) return
+      playNarrationBuffer(narrationBodyBuffer, () => { /* end of chain */ })
+    }
+
+    if (narrationIntroBuffer) {
+      playNarrationBuffer(narrationIntroBuffer, playBody)
+    } else if (narrationBodyBuffer) {
+      // Intro failed to load — go straight to body so the player still
+      // hears the longer orientation under the quotes.
+      playBody()
+    }
+  }
+
+  const stopNarration: AudioEngineHandle["stopNarration"] = (fadeMs = 1500) => {
+    narrationStopped = true
+    const now = ctx.currentTime
+    narrationBus.gain.cancelScheduledValues(now)
+    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+    narrationBus.gain.linearRampToValueAtTime(0, now + fadeMs / 1000)
+    const src = narrationSource
+    if (!src) return
+    narrationSource = null
+    window.setTimeout(() => {
+      try { src.stop() } catch { /* noop */ }
+      try { src.disconnect() } catch { /* noop */ }
+    }, fadeMs + 60)
+  }
+
+  const playGlitchVoice: AudioEngineHandle["playGlitchVoice"] = (opts) => {
+    if (glitchVoiceBuffers.length === 0) return
+    // 600ms cooldown so back-to-back glitch cues don't stack samples.
+    const now = ctx.currentTime
+    if (now - lastGlitchVoiceAt < 0.6) return
+    lastGlitchVoiceAt = now
+    if (ctx.state === "suspended") void ctx.resume()
+
+    const buf = glitchVoiceBuffers[
+      Math.floor(Math.random() * glitchVoiceBuffers.length)
+    ]
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    // Slight pitch nudge so the same 3 files don't read identical.
+    src.playbackRate.value = 0.92 + Math.random() * 0.18
+
+    const g = ctx.createGain()
+    g.gain.value = (opts?.gain ?? DEFAULT_LAYER_GAIN.glitchVoice) * (0.85 + Math.random() * 0.3)
+
+    const panner = ctx.createStereoPanner()
+    panner.pan.value = opts?.pan ?? (Math.random() - 0.5) * 1.4
+
+    src.connect(g).connect(panner).connect(oneShotBus)
+    src.onended = () => {
+      try { src.disconnect() } catch { /* noop */ }
+      try { g.disconnect() } catch { /* noop */ }
+      try { panner.disconnect() } catch { /* noop */ }
+    }
+    src.start()
   }
 
   const startPreStartLoop: AudioEngineHandle["startPreStartLoop"] = (fadeMs = 800) => {
@@ -844,6 +1021,11 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
       try { musicSource.disconnect() } catch { /* noop */ }
       musicSource = null
     }
+    if (narrationSource) {
+      try { narrationSource.stop() } catch { /* noop */ }
+      try { narrationSource.disconnect() } catch { /* noop */ }
+      narrationSource = null
+    }
     if (typingSource) {
       try { typingSource.stop() } catch { /* noop */ }
       try { typingSource.disconnect() } catch { /* noop */ }
@@ -867,6 +1049,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     try { eveBus.disconnect() } catch { /* noop */ }
     try { oneShotBus.disconnect() } catch { /* noop */ }
     try { musicBus.disconnect() } catch { /* noop */ }
+    try { narrationBus.disconnect() } catch { /* noop */ }
     try { preStartBus.disconnect() } catch { /* noop */ }
     try { keystrokeBus.disconnect() } catch { /* noop */ }
     try { master.disconnect() } catch { /* noop */ }
@@ -883,6 +1066,9 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     stopMusic,
     duckMusic,
     unduckMusic,
+    startNarration,
+    stopNarration,
+    playGlitchVoice,
     startPreStartLoop,
     stopPreStartLoop,
     startTyping,

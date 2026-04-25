@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Wakeup } from "./Wakeup"
+import { Boot } from "./Boot"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
 import { Artifacts, type ArtifactsHandle } from "./Artifacts"
 import { IntroVideo } from "./IntroVideo"
+import { IntroWelcome } from "./IntroWelcome"
 import { QuoteRotator } from "./QuoteRotator"
 import { createClock } from "@/lib/experience/clock"
 import { sequence, type Cue } from "@/lib/experience/sequence"
@@ -16,16 +18,25 @@ import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audi
  *
  * State machine:
  *   "wakeup"  — amber title + prompt + cursor. Pre-audio.
+ *   "boot"    — first space pressed. Amber-on-black loading bar with
+ *               status lines and gibberish; ends in a white flash that
+ *               crossfades into the cream Stage. Power-on SFX, ambient,
+ *               and music ramp underneath this whole window.
  *   "intro"   — Stage mounted, ambient/music/artifacts running, intro.mp4
- *               looping at 50% over the top. The clock is NOT started yet
- *               — boot sequence and Eve are deferred until the player
+ *               looping at 50% over the top. Distant PA narration starts
+ *               ~4s after entering this phase. The clock is NOT started
+ *               yet — boot sequence and Eve are deferred until the player
  *               commits a second time.
  *   "running" — Second input received. Intro video unmounts, the clock
  *               starts at t=0 and the welcome stanza → boot checklist →
  *               Eve sequence plays out as before.
  */
 
-type Phase = "wakeup" | "intro" | "running"
+type Phase = "wakeup" | "boot" | "intro" | "running"
+
+// Narration kicks ~4 seconds after entering intro (i.e. just after the
+// white-flash settles into the cream stage).
+const NARRATION_DELAY_AFTER_INTRO_MS = 4000
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("wakeup")
@@ -225,8 +236,35 @@ export function Experience() {
     // so it doesn't punch in.
     window.setTimeout(() => audio.startMusic(3500), 9000)
 
+    // Narration is scheduled later via a phase-driven effect — it
+    // starts ~4s after entering "intro" (i.e. just after the boot's
+    // white flash settles), so its timing stays anchored to the visual
+    // beat regardless of how the boot length is tuned.
+
+    setPhase("boot")
+  }, [])
+
+  // Boot completion handoff. Fired by Boot.tsx at the white-flash peak.
+  const handleBootComplete = useCallback(() => {
     setPhase("intro")
   }, [])
+
+  // Bar-lock relay click: a single dry tick when the loading bar hits
+  // 100%. Reuses the existing "tick" oneshot.
+  const handleBootBarLock = useCallback(() => {
+    audioRef.current?.playOneShot("tick", { gain: 0.6 })
+  }, [])
+
+  // Schedule the distant-PA narration once we're in intro. Anchored to
+  // phase entry, not to wall-clock time after first click — keeps the
+  // narration beat consistent if boot length changes.
+  useEffect(() => {
+    if (phase !== "intro") return
+    const id = window.setTimeout(() => {
+      audioRef.current?.startNarration(2500)
+    }, NARRATION_DELAY_AFTER_INTRO_MS)
+    return () => window.clearTimeout(id)
+  }, [phase])
 
   // Start artifacts ambient bed when intro mounts so glitches/symbols/
   // clumps run under the intro video. The clock isn't running during
@@ -246,6 +284,8 @@ export function Experience() {
     const advance = () => {
       if (introUnlockedRef.current) return
       introUnlockedRef.current = true
+      // Narration is intro-only — fade it out as the player commits.
+      audioRef.current?.stopNarration(1500)
       setPhase("running")
     }
     const onKey = (e: KeyboardEvent) => {
@@ -282,6 +322,9 @@ export function Experience() {
   return (
     <main aria-hidden="true">
       {phase === "wakeup" && <Wakeup onUnlock={handleUnlock} />}
+      {phase === "boot" && (
+        <Boot onComplete={handleBootComplete} onBarLock={handleBootBarLock} />
+      )}
       {(phase === "intro" || phase === "running") && (
         <Stage dim={phase === "intro"}>
           {/* Terminal mounts in both phases — it stays empty during intro
@@ -310,6 +353,12 @@ export function Experience() {
                   break
                 case "glitch":
                   engine.playArtifactSfx("glitch", ev.intensity)
+                  // Random corrupted-voice fragment under the visual
+                  // glitch — more likely on hard glitches so they read
+                  // as a transmission breaking through.
+                  if (Math.random() < (ev.intensity === "hard" ? 0.4 : 0.18)) {
+                    engine.playGlitchVoice()
+                  }
                   break
               }
             }}
@@ -317,6 +366,9 @@ export function Experience() {
           {/* Intro video at 50% over the stage. Removed on phase advance,
               so its decoder is freed once the player commits. */}
           {phase === "intro" && <IntroVideo />}
+          {/* Welcome card stays mounted into running so it can fade out
+              gracefully on the phase transition rather than popping. */}
+          <IntroWelcome visible={phase === "intro"} />
           {/* Quote rotator drives the Terminal during intro only. */}
           {phase === "intro" && <QuoteRotator terminal={terminalHandle} />}
         </Stage>
