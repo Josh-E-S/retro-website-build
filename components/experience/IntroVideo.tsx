@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { withBase } from "@/lib/base-path"
 
 /*
  * IntroVideo — full-viewport intro footage at 50% opacity.
@@ -43,7 +44,7 @@ export function IntroVideo() {
     >
       <video
         ref={videoRef}
-        src="/videos/intro.mp4"
+        src={withBase("/videos/intro.mp4")}
         autoPlay
         muted
         loop

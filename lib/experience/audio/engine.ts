@@ -92,13 +92,13 @@ const MUSIC = {
 // Distant PA narration — plays during intro only. Two parts chained:
 // the short intro greets the candidate, the longer orientation plays
 // under the quote rotator until the player commits or it ends.
-const NARRATION_INTRO = "/audio/talking-sessions/intro-for-orientation.mp3"
-const NARRATION_BODY = "/audio/talking-sessions/full-orientation.mp3"
+const NARRATION_INTRO = withBase("/audio/talking-sessions/intro-for-orientation.mp3")
+const NARRATION_BODY = withBase("/audio/talking-sessions/full-orientation.mp3")
 
 // Corrupted-AI glitch voice bank. Fired as random punctuation under the
 // existing visual glitch cues so hard glitches feel like a transmission
 // breaking through, not just visual noise.
-const GLITCH_VOICE_BASE = "/audio/sound-effects/digital-artifacts"
+const GLITCH_VOICE_BASE = withBase("/audio/sound-effects/digital-artifacts")
 const GLITCH_VOICE_FILES = [
   `${GLITCH_VOICE_BASE}/A_glitching_female-v_#1-1777102531828.mp3`,
   `${GLITCH_VOICE_BASE}/A_glitching_female-v_#3-1777102531850.mp3`,
