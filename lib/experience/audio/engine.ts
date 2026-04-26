@@ -156,6 +156,9 @@ export type AudioEngineHandle = {
   stopNarration: (fadeMs?: number) => void
   /** Fire one of the corrupted-voice samples; cooldown-gated internally. */
   playGlitchVoice: (opts?: { gain?: number; pan?: number }) => void
+  /** Soft, dry UI tick — used on side-menu hover. High-pitched, low gain,
+   *  slight pitch jitter so consecutive plays vary. */
+  playMenuTick: () => void
   /** Temporarily duck music (usually driven internally by playEve). */
   duckMusic: (depth: number, fadeMs?: number) => void
   /** Release the duck back to full level. */
@@ -809,6 +812,29 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     }, fadeMs + 60)
   }
 
+  const playMenuTick: AudioEngineHandle["playMenuTick"] = () => {
+    const buf = oneShotBuffers.get("tick")
+    if (!buf) return
+    if (ctx.state === "suspended") void ctx.resume()
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    // High-pitched + jittery so each hover sounds distinct from the
+    // last without ever sounding alarming.
+    src.playbackRate.value = 1.9 + Math.random() * 0.6
+    const g = ctx.createGain()
+    g.gain.value = 0.14
+    const p = ctx.createStereoPanner()
+    // Slight pan jitter — keeps the menu feeling spatial.
+    p.pan.value = (Math.random() - 0.5) * 0.4
+    src.connect(g).connect(p).connect(oneShotBus)
+    src.onended = () => {
+      try { src.disconnect() } catch { /* noop */ }
+      try { g.disconnect() } catch { /* noop */ }
+      try { p.disconnect() } catch { /* noop */ }
+    }
+    src.start()
+  }
+
   const playArtifactSfx: AudioEngineHandle["playArtifactSfx"] = (kind, intensity) => {
     switch (kind) {
       case "tetris":
@@ -1076,6 +1102,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     playButtonThunk,
     playTrappedAvatar,
     playArtifactSfx,
+    playMenuTick,
     isReady: () => ready,
     dispose,
   }

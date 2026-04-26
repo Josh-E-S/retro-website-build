@@ -6,46 +6,42 @@ import { useFlickerText } from "@/lib/experience/use-flicker-text"
 /*
  * SynchronizeAudio — the landing-page audio gate.
  *
- * A retro-futurist pushbutton with a phosphor ring. Sits center-bottom
- * of the landing while the room is silent. Click → fires onEnable
- * (which the parent uses to spin up the AudioContext and start the
- * ambient bed), then animates ON for ~900ms before fading out so the
- * landing reads cleanly without a permanent UI element.
+ * Quiet, brutalist call-to-action. A single bordered rectangle,
+ * cream/ink palette, CMYK chromatic split on the label so it shares
+ * visual language with the welcome card and the side menu. Fades out
+ * once engaged so the landing reads cleanly.
  *
- * Looks like institutional audio hardware, not a video-game button —
- * brushed-metal frame, recessed bezel, illuminated label that reads
- * SYNCHRONIZE AUDIO with a slow per-character flicker so it feels
- * like a transmitter waiting to lock on.
+ * Click is the user gesture that unlocks AudioContext — the parent
+ * uses onEnable to spin up the engine and start the ambient bed.
  */
 
 const LABEL_TEXT = "SYNCHRONIZE AUDIO"
 const SUBLABEL_TEXT = "Click to engage transmission"
 
-const PHOSPHOR_OFF = "#6f8ea8"   // accent
-const PHOSPHOR_ON = "#d9b24a"    // amber
-
-const FADE_OUT_AFTER_MS = 900
+const FADE_OUT_AFTER_MS = 600
 const FADE_OUT_MS = 700
 
 type Props = {
-  /** Called the instant the player clicks. Parent should: create the
-   *  AudioEngine, start ambient bed, kick music etc. */
   onEnable: () => void
 }
 
 export function SynchronizeAudio({ onEnable }: Props) {
   const [engaged, setEngaged] = useState(false)
+  const [hover, setHover] = useState(false)
   const [removed, setRemoved] = useState(false)
 
   const labelDisplay = useFlickerText(LABEL_TEXT, !engaged, {
-    intervalMin: 380,
-    intervalMax: 950,
-    parallelChance: 0.25,
+    intervalMin: 420,
+    intervalMax: 1000,
+    parallelChance: 0.22,
   })
 
   useEffect(() => {
     if (!engaged) return
-    const out = window.setTimeout(() => setRemoved(true), FADE_OUT_AFTER_MS + FADE_OUT_MS)
+    const out = window.setTimeout(
+      () => setRemoved(true),
+      FADE_OUT_AFTER_MS + FADE_OUT_MS,
+    )
     return () => window.clearTimeout(out)
   }, [engaged])
 
@@ -57,7 +53,9 @@ export function SynchronizeAudio({ onEnable }: Props) {
     onEnable()
   }
 
-  const phosphor = engaged ? PHOSPHOR_ON : PHOSPHOR_OFF
+  // Hover lifts the border + text shadow slightly. Engaged state freezes
+  // the hover treatment on so the button reads "armed" during fade-out.
+  const lit = hover || engaged
 
   return (
     <div
@@ -69,9 +67,7 @@ export function SynchronizeAudio({ onEnable }: Props) {
         zIndex: 9,
         textAlign: "center",
         userSelect: "none",
-        opacity: engaged && removed === false ? 0 : 1,
-        // Two-stage fade: stay solid through the engage-thunk window,
-        // then ease out fully.
+        opacity: engaged ? 0 : 1,
         transition: `opacity ${FADE_OUT_MS}ms ease-out ${FADE_OUT_AFTER_MS}ms`,
         pointerEvents: removed ? "none" : "auto",
       }}
@@ -79,148 +75,59 @@ export function SynchronizeAudio({ onEnable }: Props) {
       <button
         type="button"
         onClick={handleClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onFocus={() => setHover(true)}
+        onBlur={() => setHover(false)}
         aria-label="Synchronize audio"
         style={{
           appearance: "none",
-          border: "none",
-          background: "transparent",
-          padding: 0,
           cursor: engaged ? "default" : "pointer",
-          display: "block",
+          padding: "16px 36px",
+          background: "transparent",
+          border: `1px solid ${lit ? "rgba(232, 230, 220, 0.9)" : "rgba(232, 230, 220, 0.45)"}`,
+          color: lit
+            ? "rgba(255, 255, 255, 1)"
+            : "rgba(232, 230, 220, 0.85)",
+          fontFamily: "var(--display-font)",
+          textTransform: "uppercase",
+          letterSpacing: "0.32em",
+          fontSize: "clamp(13px, 1.05vw, 16px)",
+          fontWeight: 700,
+          // Same CMYK chromatic split + soft drop the welcome card uses
+          // so the button reads as part of the same transmission family.
+          textShadow: [
+            "1.2px 0 0 rgba(31, 182, 193, 0.55)",
+            "-1.2px 0 0 rgba(200, 75, 143, 0.55)",
+            "0 1px 0 rgba(0, 0, 0, 0.45)",
+            lit
+              ? "0 0 22px rgba(0, 0, 0, 0.55)"
+              : "0 0 14px rgba(0, 0, 0, 0.45)",
+          ].join(", "),
+          boxShadow: lit
+            ? "0 0 18px rgba(0, 0, 0, 0.35)"
+            : "0 0 10px rgba(0, 0, 0, 0.25)",
+          transition:
+            "border-color 240ms ease-out, color 240ms ease-out, text-shadow 240ms ease-out, box-shadow 240ms ease-out",
+          whiteSpace: "pre",
         }}
       >
-        {/* Outer brushed-metal frame */}
-        <div
-          style={{
-            width: "clamp(180px, 18vw, 240px)",
-            padding: "20px 24px 14px",
-            background:
-              "linear-gradient(180deg, #2a2f36 0%, #161a1f 50%, #2a2f36 100%)",
-            border: "1px solid #0a0c0f",
-            boxShadow: [
-              "inset 0 1px 0 rgba(255,255,255,0.08)",
-              "inset 0 -1px 0 rgba(0,0,0,0.6)",
-              "0 8px 24px rgba(0,0,0,0.45)",
-              engaged
-                ? `0 0 38px ${phosphor}66, 0 0 12px ${phosphor}aa`
-                : `0 0 14px ${phosphor}33`,
-            ].join(", "),
-            transition: "box-shadow 320ms ease-out",
-          }}
-        >
-          {/* Recessed bezel + phosphor ring */}
-          <div
-            style={{
-              position: "relative",
-              width: "100%",
-              padding: "16px 12px",
-              background:
-                "radial-gradient(ellipse at 50% 30%, #1c2128 0%, #0a0d11 75%)",
-              border: `1px solid ${phosphor}`,
-              borderRadius: "2px",
-              boxShadow: [
-                `inset 0 0 18px ${phosphor}${engaged ? "55" : "22"}`,
-                `0 0 10px ${phosphor}${engaged ? "aa" : "33"}`,
-              ].join(", "),
-              transition:
-                "border-color 320ms ease-out, box-shadow 320ms ease-out",
-              animation: engaged
-                ? "sync-audio-pulse 1.2s ease-in-out infinite"
-                : undefined,
-            }}
-          >
-            {/* Label */}
-            <div
-              style={{
-                fontFamily: "var(--terminal-font)",
-                fontSize: "clamp(13px, 1.05vw, 15px)",
-                letterSpacing: "0.32em",
-                fontWeight: 700,
-                color: phosphor,
-                textShadow: `0 0 8px ${phosphor}, 0 0 2px ${phosphor}`,
-                whiteSpace: "pre",
-              }}
-            >
-              {engaged ? "● TRANSMISSION ACTIVE" : labelDisplay}
-            </div>
-            {/* Sublabel */}
-            <div
-              style={{
-                marginTop: "8px",
-                fontFamily: "var(--terminal-font)",
-                fontSize: "clamp(10px, 0.78vw, 12px)",
-                letterSpacing: "0.22em",
-                color: engaged ? `${phosphor}cc` : "#8a8578",
-                textTransform: "uppercase",
-                textShadow: engaged ? `0 0 4px ${phosphor}` : undefined,
-              }}
-            >
-              {engaged ? "Synchronizing…" : SUBLABEL_TEXT}
-            </div>
-
-            {/* Hardware indicator dot */}
-            <div
-              style={{
-                position: "absolute",
-                top: 6,
-                right: 8,
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: phosphor,
-                boxShadow: `0 0 6px ${phosphor}, 0 0 2px ${phosphor}`,
-                animation: engaged
-                  ? "sync-audio-dot 0.6s steps(1) infinite"
-                  : "sync-audio-dot-off 1.8s ease-in-out infinite",
-              }}
-            />
-          </div>
-
-          {/* Bolt corners — institutional hardware detail */}
-          {[
-            { top: 4, left: 6 },
-            { top: 4, right: 6 },
-            { bottom: 4, left: 6 },
-            { bottom: 4, right: 6 },
-          ].map((pos, i) => (
-            <div
-              key={i}
-              style={{
-                position: "absolute",
-                width: 4,
-                height: 4,
-                borderRadius: "50%",
-                background: "#0a0c0f",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
-                ...pos,
-              }}
-            />
-          ))}
-        </div>
+        {labelDisplay}
       </button>
 
-      <style>{`
-        @keyframes sync-audio-pulse {
-          0%, 100% {
-            box-shadow:
-              inset 0 0 18px ${PHOSPHOR_ON}55,
-              0 0 10px ${PHOSPHOR_ON}aa;
-          }
-          50% {
-            box-shadow:
-              inset 0 0 26px ${PHOSPHOR_ON}88,
-              0 0 22px ${PHOSPHOR_ON}dd;
-          }
-        }
-        @keyframes sync-audio-dot {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0.25; }
-        }
-        @keyframes sync-audio-dot-off {
-          0%, 100% { opacity: 0.45; }
-          50%      { opacity: 0.85; }
-        }
-      `}</style>
+      <div
+        style={{
+          marginTop: "12px",
+          fontFamily: "var(--terminal-font)",
+          fontSize: "clamp(10px, 0.78vw, 12px)",
+          letterSpacing: "0.32em",
+          textTransform: "uppercase",
+          color: "rgba(232, 230, 220, 0.6)",
+          textShadow: "0 1px 0 rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {SUBLABEL_TEXT}
+      </div>
     </div>
   )
 }

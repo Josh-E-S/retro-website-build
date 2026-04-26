@@ -156,7 +156,11 @@ export function Landing({ onEnroll }: Props) {
       {!audioEngaged && <SynchronizeAudio onEnable={handleEnableAudio} />}
 
       {/* Side menu fades in once audio's on. */}
-      <SideMenu visible={audioEngaged} onSelect={handleSelect} />
+      <SideMenu
+        visible={audioEngaged}
+        onSelect={handleSelect}
+        onHover={() => audioRef.current?.playMenuTick()}
+      />
 
       {/* Stub overlay for the four unwired menu items. */}
       {stub && (

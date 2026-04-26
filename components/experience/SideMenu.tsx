@@ -42,10 +42,17 @@ type Props = {
   /** Click handler. Caller decides what each id does (Enroll →
    *  advance, others → stub overlay). */
   onSelect: (id: MenuId) => void
+  /** Fires once per hover-enter on an item. Caller plays a soft tick. */
+  onHover?: (id: MenuId) => void
 }
 
-export function SideMenu({ visible, onSelect }: Props) {
+export function SideMenu({ visible, onSelect, onHover }: Props) {
   const [hover, setHover] = useState<MenuId | null>(null)
+
+  const enter = (id: MenuId) => {
+    setHover(id)
+    onHover?.(id)
+  }
 
   return (
     <div
@@ -87,7 +94,7 @@ export function SideMenu({ visible, onSelect }: Props) {
           padding: 0,
           display: "flex",
           flexDirection: "column",
-          gap: "12px",
+          gap: "16px",
         }}
       >
         {ITEMS.map((item) => {
@@ -97,24 +104,25 @@ export function SideMenu({ visible, onSelect }: Props) {
               <button
                 type="button"
                 onClick={() => onSelect(item.id)}
-                onMouseEnter={() => setHover(item.id)}
+                onMouseEnter={() => enter(item.id)}
                 onMouseLeave={() => setHover((h) => (h === item.id ? null : h))}
-                onFocus={() => setHover(item.id)}
+                onFocus={() => enter(item.id)}
                 onBlur={() => setHover((h) => (h === item.id ? null : h))}
                 style={{
                   appearance: "none",
                   background: "transparent",
                   border: "none",
-                  padding: "6px 0",
+                  padding: "8px 0",
                   cursor: "pointer",
                   fontFamily: "var(--display-font)",
-                  fontSize: "clamp(15px, 1.2vw, 19px)",
-                  letterSpacing: "0.22em",
+                  fontSize: "clamp(18px, 1.55vw, 24px)",
+                  fontWeight: 700,
+                  letterSpacing: "0.18em",
                   textTransform: "uppercase",
                   textAlign: "left",
                   color: isHover
-                    ? "rgba(255, 255, 255, 0.98)"
-                    : "rgba(232, 230, 220, 0.78)",
+                    ? "rgba(255, 255, 255, 1)"
+                    : "rgba(232, 230, 220, 0.88)",
                   textShadow: isHover
                     ? [
                         "1.2px 0 0 rgba(31, 182, 193, 0.6)",
@@ -139,12 +147,13 @@ export function SideMenu({ visible, onSelect }: Props) {
                 <span
                   style={{
                     fontFamily: "var(--terminal-font)",
-                    fontSize: "0.72em",
+                    fontSize: "0.78em",
+                    fontWeight: 700,
                     color: isHover
                       ? "var(--cyan)"
-                      : "rgba(111, 142, 168, 0.65)",
+                      : "rgba(111, 142, 168, 0.7)",
                     letterSpacing: "0.1em",
-                    minWidth: "2.4em",
+                    minWidth: "2.6em",
                     transition: "color 220ms ease-out",
                   }}
                 >
