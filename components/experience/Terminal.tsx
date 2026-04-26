@@ -387,10 +387,10 @@ export function Terminal({ onReady, onTypingStart, onTypingEnd, dim = false }: P
         // the text a little further from the top via padding. Symmetric
         // bottom padding keeps the optical center close to true screen
         // center. Values tuned for the 0.36-scale corner logo.
-        paddingTop: "4vh",
-        paddingBottom: "4vh",
-        paddingLeft: "8vw",
-        paddingRight: "8vw",
+        paddingTop: "clamp(12px, 4vh, 64px)",
+        paddingBottom: "clamp(12px, 4vh, 64px)",
+        paddingLeft: "clamp(16px, 8vw, 96px)",
+        paddingRight: "clamp(16px, 8vw, 96px)",
         opacity: clearing ? 0 : 1,
         transform: clearing ? "translateY(10px)" : "translateY(0)",
         transition:
