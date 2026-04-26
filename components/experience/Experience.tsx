@@ -39,9 +39,10 @@ type Phase = "landing" | "boot" | "intro" | "running"
 // Narration kicks ~4 seconds after entering intro (i.e. just after the
 // white-flash settles into the cream stage).
 const NARRATION_DELAY_AFTER_INTRO_MS = 1200
-// Hold on the intro screen long enough for the welcome card to settle
-// and the narration to start, then commit to running automatically.
-const INTRO_AUTO_ADVANCE_MS = 3000
+// Hold on the intro screen long enough for the distant-PA narration
+// to play meaningfully before we hand off to the running clock. The
+// narration intro sample is a few seconds; this gives it room to land.
+const INTRO_AUTO_ADVANCE_MS = 8000
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("landing")
@@ -267,7 +268,9 @@ export function Experience() {
     const advance = () => {
       if (introUnlockedRef.current) return
       introUnlockedRef.current = true
-      audioRef.current?.stopNarration(1200)
+      // Let the narration keep playing into the running phase — it'll
+      // naturally end at its file length. Eve ducks it when she speaks
+      // so they don't compete on the same channel.
       setPhase("running")
     }
     const auto = window.setTimeout(advance, INTRO_AUTO_ADVANCE_MS)
