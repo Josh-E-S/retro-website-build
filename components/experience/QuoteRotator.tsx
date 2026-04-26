@@ -120,10 +120,14 @@ export function QuoteRotator({ terminal }: Props) {
 
         // Random scatter — each quote sits in a different region of the
         // screen so the eye keeps moving instead of stacking center.
-        // Range: ±18vw horizontal, ±14vh vertical. Avoid full-corner
-        // extremes so quotes never clip near the CRT vignette.
-        const offsetX = `${((Math.random() * 2 - 1) * 18).toFixed(1)}vw`
-        const offsetY = `${((Math.random() * 2 - 1) * 14).toFixed(1)}vh`
+        // Tighter range on narrow viewports so quotes can't run off the
+        // edge or collide with the title at top / menu at bottom.
+        const isNarrow =
+          typeof window !== "undefined" && window.innerWidth <= 640
+        const xRange = isNarrow ? 6 : 18
+        const yRange = isNarrow ? 6 : 14
+        const offsetX = `${((Math.random() * 2 - 1) * xRange).toFixed(1)}vw`
+        const offsetY = `${((Math.random() * 2 - 1) * yRange).toFixed(1)}vh`
 
         // Render the main quote line. cps tuned so reads quickly enough
         // to cycle, slowly enough to feel deliberate.

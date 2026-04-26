@@ -53,6 +53,7 @@ export function IntroWelcome({ visible, subtitle }: Props) {
   return (
     <div
       aria-hidden="true"
+      className="intro-welcome"
       style={{
         position: "absolute",
         top: "10vh",
@@ -61,21 +62,23 @@ export function IntroWelcome({ visible, subtitle }: Props) {
         zIndex: 7,
         pointerEvents: "none",
         textAlign: "center",
+        maxWidth: "min(92vw, 720px)",
         opacity,
         transition: visible
           ? `opacity ${FADE_IN_MS}ms ease-out`
           : `opacity ${FADE_OUT_MS}ms ease-in`,
         userSelect: "none",
-        whiteSpace: "pre",
-        // Off-white with CMYK chromatic split + slow flicker — reads as
-        // a digital transmission rather than a flashlight on the page.
+        // Wrap on narrow viewports — at clamp's 28px min the unwrapped
+        // string is ~540px, well over a 375px phone width.
+        whiteSpace: "normal",
         color: "rgba(245, 244, 238, 0.92)",
         fontFamily: "var(--display-font)",
       }}
     >
       <div
+        className="intro-welcome-title"
         style={{
-          fontSize: "clamp(28px, 3.4vw, 44px)",
+          fontSize: "clamp(22px, 3.4vw, 44px)",
           fontWeight: 700,
           letterSpacing: "0.32em",
           // Cyan/magenta print-registration split + a soft drop shadow
@@ -121,6 +124,12 @@ export function IntroWelcome({ visible, subtitle }: Props) {
           47%      { opacity: 0.94; }
           50%      { opacity: 0.86; }
           53%      { opacity: 0.96; }
+        }
+        @media (max-width: 640px) {
+          /* Tight tracking on narrow phones so the title doesn't crush
+             into a column or run past the side menu. */
+          .intro-welcome { top: 6vh; }
+          .intro-welcome-title { letter-spacing: 0.18em; line-height: 1.15; }
         }
       `}</style>
     </div>

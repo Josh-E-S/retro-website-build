@@ -56,6 +56,7 @@ export function SideMenu({ visible, onSelect, onHover }: Props) {
 
   return (
     <div
+      className="side-menu-root"
       style={{
         position: "absolute",
         top: "50%",
@@ -68,6 +69,21 @@ export function SideMenu({ visible, onSelect, onHover }: Props) {
         userSelect: "none",
       }}
     >
+      <style>{`
+        /* On phones the title sits at the top and quotes drift around
+           center, so push the menu to the bottom-left to avoid overlap.
+           Override transform to remove the centering translateY. */
+        @media (max-width: 640px) {
+          .side-menu-root {
+            top: auto !important;
+            bottom: max(env(safe-area-inset-bottom), 4vh);
+            left: 5vw;
+            right: 5vw;
+            transform: none !important;
+            max-width: none;
+          }
+        }
+      `}</style>
       {/* Header strip */}
       <div
         style={{
