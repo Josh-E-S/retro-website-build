@@ -85,22 +85,29 @@ function pickQuote(history: number[]): { quote: Quote; index: number } {
 
 type Props = {
   terminal: TerminalHandle | null
+  /** When false, no quotes type and any in-flight quote is cleared.
+   *  When true, the loop runs immediately (no warm-up delay — the
+   *  caller already gates this on user inactivity). */
+  enabled?: boolean
 }
 
-export function QuoteRotator({ terminal }: Props) {
+export function QuoteRotator({ terminal, enabled = true }: Props) {
   useEffect(() => {
     if (!terminal) return
+    if (!enabled) {
+      // Make sure nothing is left typed when the menu wakes back up.
+      void terminal.clear()
+      return
+    }
     let cancelled = false
     const history: number[] = []
 
     const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 
     const showOne = async () => {
-      // Initial delay — welcome card finishes fading in at ~1.8s
-      // (600ms delay + 1200ms fade). Hold an additional 2s after that
-      // so the player has a clean, quiet moment with the title before
-      // the first transmission arrives.
-      await sleep(3800)
+      // Short settle before the first quote so the menu fade-out can
+      // finish; subsequent cycles flow without an extra delay.
+      await sleep(600)
       if (cancelled) return
 
       while (!cancelled) {
@@ -170,10 +177,10 @@ export function QuoteRotator({ terminal }: Props) {
     void showOne()
     return () => {
       cancelled = true
-      // Clear the screen on unmount so the welcome stanza arrives clean.
+      // Clear the screen when quotes pause so the menu reads cleanly.
       void terminal.clear()
     }
-  }, [terminal])
+  }, [terminal, enabled])
 
   return null
 }

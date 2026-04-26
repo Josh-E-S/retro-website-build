@@ -30,9 +30,13 @@ import {
  * shows a "session cannot be terminated" notice — first overt horror
  * beat before the user has even committed to enrollment.
  *
- * Narration does NOT play here — it's reserved for the post-Boot
- * intro phase ("ENROLL" path).
+ * Narration: the distant-PA orientation track plays here, starting
+ * ~2s after music with no fade-in so it lands as a clear voice. It
+ * keeps playing through enrollment and into the running phase, where
+ * Eve's lines duck it.
  */
+
+const MENU_IDLE_FADE_MS = 4000
 
 type Props = {
   /** Called when the player chooses to enroll. Parent should advance
@@ -48,6 +52,11 @@ export function Landing({ onEnroll }: Props) {
   const [terminalHandle, setTerminalHandle] = useState<TerminalHandle | null>(null)
   const [audioEngaged, setAudioEngaged] = useState(false)
   const [stub, setStub] = useState<Exclude<MenuId, "enroll"> | null>(null)
+  // Menu idle state. The menu fades to 0 after a few seconds of no
+  // input; while idle the QuoteRotator runs. Any pointer/touch/key
+  // wakes the menu and stops the quotes.
+  const [menuIdle, setMenuIdle] = useState(false)
+  const idleTimerRef = useRef<number | null>(null)
   // Same Strict-Mode guard pattern Experience uses on its imperative
   // handles — Terminal mounts can fire onReady twice in dev and we
   // don't want to swap the handle out from under us.
@@ -93,7 +102,38 @@ export function Landing({ onEnroll }: Props) {
     }, 700)
 
     window.setTimeout(() => engine.startMusic(1500), 1200)
+
+    // Distant-PA orientation narration: 2s after music starts (i.e.
+    // ~3.2s after sync click), at full level — no fade-in so the
+    // voice cuts in like a real PA. It keeps playing through enroll
+    // and into the running phase, where Eve will duck it.
+    window.setTimeout(() => engine.startNarration(0), 1200 + 2000)
   }, [])
+
+  // Inactivity timer: any pointer/touch/key wakes the menu and clears
+  // the quote rotator. Going N ms without input fades the menu out and
+  // lets quotes start firing.
+  useEffect(() => {
+    if (!audioEngaged) return
+    const wake = () => {
+      setMenuIdle(false)
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = window.setTimeout(
+        () => setMenuIdle(true),
+        MENU_IDLE_FADE_MS,
+      )
+    }
+    wake()
+    window.addEventListener("pointerdown", wake)
+    window.addEventListener("touchstart", wake, { passive: true })
+    window.addEventListener("keydown", wake)
+    return () => {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
+      window.removeEventListener("pointerdown", wake)
+      window.removeEventListener("touchstart", wake)
+      window.removeEventListener("keydown", wake)
+    }
+  }, [audioEngaged])
 
   const handleSelect = useCallback((id: MenuId) => {
     if (!audioEngaged) {
@@ -148,16 +188,20 @@ export function Landing({ onEnroll }: Props) {
           call to action. */}
       <IntroWelcome visible subtitle="" />
 
-      {/* Quote rotator only after audio is engaged so quotes don't
-          appear in silence. */}
-      {audioEngaged && <QuoteRotator terminal={terminalHandle} />}
+      {/* Quotes fire only when the menu has gone to sleep — they take
+          over the screen when the player isn't actively engaging. */}
+      <QuoteRotator
+        terminal={terminalHandle}
+        enabled={audioEngaged && menuIdle}
+      />
 
       {/* Audio gate. Hidden once engaged. */}
       {!audioEngaged && <SynchronizeAudio onEnable={handleEnableAudio} />}
 
-      {/* Side menu fades in once audio's on. */}
+      {/* Side menu fades in once audio's on, fades to 0 when idle. */}
       <SideMenu
         visible={audioEngaged}
+        idle={menuIdle}
         onSelect={handleSelect}
         onHover={() => audioRef.current?.playMenuTick()}
       />

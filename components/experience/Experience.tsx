@@ -36,13 +36,11 @@ import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audi
 
 type Phase = "landing" | "boot" | "intro" | "running"
 
-// Narration kicks ~4 seconds after entering intro (i.e. just after the
-// white-flash settles into the cream stage).
-const NARRATION_DELAY_AFTER_INTRO_MS = 1200
-// Hold on the intro screen long enough for the distant-PA narration
-// to play meaningfully before we hand off to the running clock. The
-// narration intro sample is a few seconds; this gives it room to land.
-const INTRO_AUTO_ADVANCE_MS = 8000
+// Auto-advance from intro → running. Narration is now kicked off in
+// the Landing phase and continues playing across all subsequent phases
+// (Eve ducks it), so we don't need a long intro pad anymore — the
+// intro phase is mostly a brief crossfade window.
+const INTRO_AUTO_ADVANCE_MS = 1200
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("landing")
@@ -235,17 +233,6 @@ export function Experience() {
   const handleBootBarLock = useCallback(() => {
     audioRef.current?.playOneShot("tick", { gain: 0.6 })
   }, [])
-
-  // Schedule the distant-PA narration once we're in intro. Anchored to
-  // phase entry, not to wall-clock time after first click — keeps the
-  // narration beat consistent if boot length changes.
-  useEffect(() => {
-    if (phase !== "intro") return
-    const id = window.setTimeout(() => {
-      audioRef.current?.startNarration(1200)
-    }, NARRATION_DELAY_AFTER_INTRO_MS)
-    return () => window.clearTimeout(id)
-  }, [phase])
 
   // Start artifacts ambient bed when intro mounts so glitches/symbols/
   // clumps run under the intro video. The clock isn't running during
