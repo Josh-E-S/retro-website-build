@@ -708,14 +708,21 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     narrationStopped = false
 
     // Bring the bus up once. The chain inherits the same level — both
-    // intro and body play at the established narration gain.
+    // intro and body play at the established narration gain. fadeMs=0
+    // means "snap on" — Web Audio's linearRampToValueAtTime requires
+    // a future end time > previous event, so we setValueAtTime directly
+    // for instant on instead of an unreliable zero-length ramp.
     const now = ctx.currentTime
     narrationBus.gain.cancelScheduledValues(now)
-    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
-    narrationBus.gain.linearRampToValueAtTime(
-      DEFAULT_LAYER_GAIN.narration,
-      now + fadeMs / 1000,
-    )
+    if (fadeMs <= 0) {
+      narrationBus.gain.setValueAtTime(DEFAULT_LAYER_GAIN.narration, now)
+    } else {
+      narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+      narrationBus.gain.linearRampToValueAtTime(
+        DEFAULT_LAYER_GAIN.narration,
+        now + fadeMs / 1000,
+      )
+    }
 
     const playBody = () => {
       if (narrationStopped) return
