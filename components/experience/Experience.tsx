@@ -93,23 +93,27 @@ export function Experience() {
         if (term) term.showBlinkingCursor(cue.on)
         break
       case "eve_line": {
-        // Pace the text typewriter to the actual voice line length so the
-        // sentence finishes on screen at the same time Eve finishes speaking.
-        // If the audio buffer isn't loaded yet, fall back to the cue's cps.
+        // Type the sentence first, then have Eve speak it. The cue's
+        // declared cps controls the typewriter; once the last character
+        // lands we fire the voice clip so her audio reads as a reaction
+        // to the text appearing rather than running ahead of it.
+        const cps = cue.cps
         const totalChars = cue.textLines.join(" ").length || 1
-        const dur = audioRef.current?.getEveDuration(cue.id) ?? 0
-        // Land the last character ~250ms before the voice ends so the
-        // sentence doesn't visibly type past the audio.
-        const speakingMs = Math.max(0, dur * 1000 - 250)
-        const cps = speakingMs > 0 ? totalChars / (speakingMs / 1000) : cue.cps
+        const textTypingMs = (totalChars / Math.max(cps, 1)) * 1000
+        // Tiny pause after the last character before she speaks so the
+        // text doesn't blur into her voice.
+        const VOICE_DELAY_AFTER_TEXT_MS = 180
         if (term) void term.stanza(
           cue.textLines.map((text, i) => ({ id: `${cue.id}_${i}`, text })),
           { cps, size: "display", holdAfterMs: cue.holdAfterMs },
         )
-        // Play the matching Eve voice MP3. The audio engine drops the call
-        // silently if the buffer isn't ready or the file is missing, so
-        // this never blocks the on-screen text from rendering.
-        if (audioRef.current) audioRef.current.playEve(cue.id)
+        const engine = audioRef.current
+        if (engine) {
+          window.setTimeout(
+            () => engine.playEve(cue.id),
+            textTypingMs + VOICE_DELAY_AFTER_TEXT_MS,
+          )
+        }
         break
       }
       case "artifacts_ambient":

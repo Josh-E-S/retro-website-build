@@ -75,50 +75,53 @@ export function FullscreenToggle() {
       title={isFs ? "Exit fullscreen" : "Enter fullscreen"}
       style={{
         position: "fixed",
-        top: "max(env(safe-area-inset-top), 12px)",
-        right: "max(env(safe-area-inset-right), 12px)",
-        zIndex: 100,
-        width: "36px",
-        height: "36px",
+        top: "max(env(safe-area-inset-top), 14px)",
+        right: "max(env(safe-area-inset-right), 14px)",
+        // Above every layer the experience renders (Stage chrome tops out
+        // around z=20, prompts at z=15). Pin to 9999 so nothing buries it.
+        zIndex: 9999,
+        width: "44px",
+        height: "44px",
         padding: 0,
-        background: "rgba(15, 23, 32, 0.55)",
-        border: "1px solid rgba(232, 230, 220, 0.35)",
+        background: "rgba(15, 23, 32, 0.78)",
+        border: "1px solid rgba(245, 244, 238, 0.55)",
         borderRadius: "4px",
-        color: "rgba(232, 230, 220, 0.85)",
+        color: "rgba(245, 244, 238, 0.95)",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
         backdropFilter: "blur(2px)",
         WebkitBackdropFilter: "blur(2px)",
         transition: "background 160ms ease, color 160ms ease",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(15, 23, 32, 0.78)"
+        e.currentTarget.style.background = "rgba(31, 182, 193, 0.82)"
         e.currentTarget.style.color = "rgba(255, 255, 255, 1)"
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = "rgba(15, 23, 32, 0.55)"
-        e.currentTarget.style.color = "rgba(232, 230, 220, 0.85)"
+        e.currentTarget.style.background = "rgba(15, 23, 32, 0.78)"
+        e.currentTarget.style.color = "rgba(245, 244, 238, 0.95)"
       }}
     >
       {isFs ? (
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true">
           <path
             d="M3 6h3V3M10 3v3h3M13 10h-3v3M6 13v-3H3"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.4"
+            strokeWidth="1.6"
             strokeLinecap="square"
           />
         </svg>
       ) : (
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true">
           <path
             d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.4"
+            strokeWidth="1.6"
             strokeLinecap="square"
           />
         </svg>
