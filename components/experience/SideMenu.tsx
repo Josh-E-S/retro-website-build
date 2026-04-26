@@ -1,6 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+
+// Menu fades down to a low-opacity affordance after a few seconds of
+// inactivity so it doesn't compete with the on-screen quotes / video,
+// then snaps back to full on any pointer / key / touch input. Same
+// pattern most cinematic mobile games use to keep their HUD calm during
+// playback.
+const IDLE_FADE_MS = 4000
+const IDLE_OPACITY = 0.18
 
 /*
  * SideMenu — the left-rail landing menu.
@@ -48,11 +56,47 @@ type Props = {
 
 export function SideMenu({ visible, onSelect, onHover }: Props) {
   const [hover, setHover] = useState<MenuId | null>(null)
+  const [active, setActive] = useState(true)
+  const idleTimerRef = useRef<number | null>(null)
+
+  // Reset to active on any user input; fade after IDLE_FADE_MS of nothing.
+  useEffect(() => {
+    if (!visible) return
+    const wake = () => {
+      setActive(true)
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = window.setTimeout(
+        () => setActive(false),
+        IDLE_FADE_MS,
+      )
+    }
+    wake()
+    window.addEventListener("pointerdown", wake)
+    window.addEventListener("touchstart", wake, { passive: true })
+    window.addEventListener("keydown", wake)
+    window.addEventListener("pointermove", wake)
+    return () => {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
+      window.removeEventListener("pointerdown", wake)
+      window.removeEventListener("touchstart", wake)
+      window.removeEventListener("keydown", wake)
+      window.removeEventListener("pointermove", wake)
+    }
+  }, [visible])
 
   const enter = (id: MenuId) => {
     setHover(id)
     onHover?.(id)
   }
+
+  // visible drives the initial fade-in; active drives the idle fade.
+  // Hover / focus also force full opacity so the menu doesn't feel ghostly
+  // while the player's actually engaging with it.
+  const baseOpacity = visible ? 1 : 0
+  const liveOpacity =
+    active || hover !== null
+      ? baseOpacity
+      : Math.min(baseOpacity, IDLE_OPACITY)
 
   return (
     <div
@@ -63,8 +107,8 @@ export function SideMenu({ visible, onSelect, onHover }: Props) {
         left: "5vw",
         transform: "translateY(-50%)",
         zIndex: 8,
-        opacity: visible ? 1 : 0,
-        transition: "opacity 1200ms ease-out 600ms",
+        opacity: liveOpacity,
+        transition: "opacity 700ms ease-out",
         pointerEvents: visible ? "auto" : "none",
         userSelect: "none",
       }}
