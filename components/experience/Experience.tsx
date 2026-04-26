@@ -38,7 +38,10 @@ type Phase = "landing" | "boot" | "intro" | "running"
 
 // Narration kicks ~4 seconds after entering intro (i.e. just after the
 // white-flash settles into the cream stage).
-const NARRATION_DELAY_AFTER_INTRO_MS = 4000
+const NARRATION_DELAY_AFTER_INTRO_MS = 1200
+// Hold on the intro screen long enough for the welcome card to settle
+// and the narration to start, then commit to running automatically.
+const INTRO_AUTO_ADVANCE_MS = 3000
 
 export function Experience() {
   const [phase, setPhase] = useState<Phase>("landing")
@@ -89,16 +92,26 @@ export function Experience() {
       case "cursor_blink":
         if (term) term.showBlinkingCursor(cue.on)
         break
-      case "eve_line":
+      case "eve_line": {
+        // Pace the text typewriter to the actual voice line length so the
+        // sentence finishes on screen at the same time Eve finishes speaking.
+        // If the audio buffer isn't loaded yet, fall back to the cue's cps.
+        const totalChars = cue.textLines.join(" ").length || 1
+        const dur = audioRef.current?.getEveDuration(cue.id) ?? 0
+        // Land the last character ~250ms before the voice ends so the
+        // sentence doesn't visibly type past the audio.
+        const speakingMs = Math.max(0, dur * 1000 - 250)
+        const cps = speakingMs > 0 ? totalChars / (speakingMs / 1000) : cue.cps
         if (term) void term.stanza(
           cue.textLines.map((text, i) => ({ id: `${cue.id}_${i}`, text })),
-          { cps: cue.cps, size: "display", holdAfterMs: cue.holdAfterMs },
+          { cps, size: "display", holdAfterMs: cue.holdAfterMs },
         )
         // Play the matching Eve voice MP3. The audio engine drops the call
         // silently if the buffer isn't ready or the file is missing, so
         // this never blocks the on-screen text from rendering.
         if (audioRef.current) audioRef.current.playEve(cue.id)
         break
+      }
       case "artifacts_ambient":
         if (art) (cue.on ? art.ambient.start() : art.ambient.stop())
         break
@@ -228,7 +241,7 @@ export function Experience() {
   useEffect(() => {
     if (phase !== "intro") return
     const id = window.setTimeout(() => {
-      audioRef.current?.startNarration(2500)
+      audioRef.current?.startNarration(1200)
     }, NARRATION_DELAY_AFTER_INTRO_MS)
     return () => window.clearTimeout(id)
   }, [phase])
@@ -244,17 +257,20 @@ export function Experience() {
     return () => window.clearTimeout(id)
   }, [phase])
 
-  // Second input during intro → advance to running. The same gestures the
-  // Wakeup accepts (space / any key / pointer / touch) work here.
+  // Auto-advance from intro → running so the user doesn't have to click
+  // again to hear Eve. We still keep the input listeners so an impatient
+  // player can short-circuit the wait. The narration is intro-only and
+  // we fade it briefly as we commit; Eve's first cue then fires off the
+  // running clock at sequence.ts t≈24s.
   useEffect(() => {
     if (phase !== "intro") return
     const advance = () => {
       if (introUnlockedRef.current) return
       introUnlockedRef.current = true
-      // Narration is intro-only — fade it out as the player commits.
-      audioRef.current?.stopNarration(1500)
+      audioRef.current?.stopNarration(1200)
       setPhase("running")
     }
+    const auto = window.setTimeout(advance, INTRO_AUTO_ADVANCE_MS)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === " " || e.key === "Spacebar" || e.code === "Space") {
         e.preventDefault()
@@ -265,6 +281,7 @@ export function Experience() {
     window.addEventListener("pointerdown", advance)
     window.addEventListener("touchstart", advance, { passive: true })
     return () => {
+      window.clearTimeout(auto)
       window.removeEventListener("keydown", onKey)
       window.removeEventListener("pointerdown", advance)
       window.removeEventListener("touchstart", advance)
