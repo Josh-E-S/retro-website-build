@@ -13,7 +13,11 @@ import { useFlickerText } from "@/lib/experience/use-flicker-text"
  * scattered quotes still appear over it.
  */
 
-const TITLE_TEXT = "WELCOME TO CHOICE INDUSTRIES"
+// Split title so "Choice Industries" reads as the corporate stamp the
+// player remembers — smaller, looser welcome line; bigger, hard-stamped
+// brand line below it.
+const PREAMBLE_TEXT = "WELCOME TO"
+const BRAND_TEXT = "CHOICE INDUSTRIES"
 const SUBTITLE_TEXT =
   "Press any key to begin enrollment, or watch the orientation now playing."
 
@@ -42,7 +46,7 @@ export function IntroWelcome({ visible, subtitle }: Props) {
     return () => window.clearTimeout(id)
   }, [])
 
-  const titleDisplay = useFlickerText(TITLE_TEXT, visible && appeared, {
+  const brandDisplay = useFlickerText(BRAND_TEXT, visible && appeared, {
     intervalMin: 600,
     intervalMax: 1300,
     parallelChance: 0.22,
@@ -75,24 +79,40 @@ export function IntroWelcome({ visible, subtitle }: Props) {
         fontFamily: "var(--display-font)",
       }}
     >
+      {/* Preamble — small, thin, light. A receptionist's voice, not a logo. */}
       <div
-        className="intro-welcome-title"
+        className="intro-welcome-preamble"
         style={{
-          fontSize: "clamp(22px, 3.4vw, 44px)",
-          fontWeight: 700,
-          letterSpacing: "0.32em",
-          // Cyan/magenta print-registration split + a soft drop shadow
-          // for legibility against the dimmed paper. No raw white halo.
+          fontSize: "clamp(11px, 1.05vw, 15px)",
+          fontWeight: 400,
+          letterSpacing: "0.5em",
+          textIndent: "0.5em",
+          color: "rgba(232, 230, 220, 0.55)",
+          textShadow: "0 1px 0 rgba(0, 0, 0, 0.55)",
+        }}
+      >
+        {PREAMBLE_TEXT}
+      </div>
+
+      {/* Brand stamp — large, heavy, with the print-registration ghost.
+          This is the corporation; the player should recognize it again. */}
+      <div
+        className="intro-welcome-brand"
+        style={{
+          marginTop: "10px",
+          fontSize: "clamp(28px, 4.2vw, 56px)",
+          fontWeight: 800,
+          letterSpacing: "0.22em",
           textShadow: [
-            "1.2px 0 0 rgba(31, 182, 193, 0.55)",   // cyan ghost (right)
-            "-1.2px 0 0 rgba(200, 75, 143, 0.55)",  // magenta ghost (left)
-            "0 1px 0 rgba(0, 0, 0, 0.45)",           // 1px drop for contrast
-            "0 0 18px rgba(0, 0, 0, 0.55)",          // soft underglow lifts it off the paper
+            "1.6px 0 0 rgba(31, 182, 193, 0.6)",   // cyan ghost (right)
+            "-1.6px 0 0 rgba(200, 75, 143, 0.6)",  // magenta ghost (left)
+            "0 1px 0 rgba(0, 0, 0, 0.55)",          // 1px drop for contrast
+            "0 0 20px rgba(0, 0, 0, 0.6)",          // soft underglow
           ].join(", "),
           animation: "intro-welcome-flicker 4.2s ease-in-out infinite",
         }}
       >
-        {titleDisplay}
+        {brandDisplay}
       </div>
 
       {(() => {
@@ -129,7 +149,8 @@ export function IntroWelcome({ visible, subtitle }: Props) {
           /* Tight tracking on narrow phones so the title doesn't crush
              into a column or run past the side menu. */
           .intro-welcome { top: 6vh; }
-          .intro-welcome-title { letter-spacing: 0.18em; line-height: 1.15; }
+          .intro-welcome-preamble { letter-spacing: 0.32em; }
+          .intro-welcome-brand { letter-spacing: 0.14em; line-height: 1.15; }
         }
       `}</style>
     </div>
