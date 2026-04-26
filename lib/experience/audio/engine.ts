@@ -108,7 +108,7 @@ const GLITCH_VOICE_FILES = [
 // ── Gain defaults (linear 0–1). Tuned on first listen; retune freely. ─
 
 const DEFAULT_LAYER_GAIN = {
-  ballast: 0.18,
+  ballast: 0.126,
   hvac: 0.14,
   fan: 0.22,
   crtHum: 0.1,
@@ -135,6 +135,10 @@ export type AmbientLayerName = "ballast" | "hvac" | "fan" | "crtHum" | "crtWhine
 export type AudioEngineHandle = {
   /** Play a pre-loaded Eve line by ID. Auto-ducks music until it ends. */
   playEve: (id: string) => void
+  /** Duration in seconds of a preloaded Eve voice line. Returns 0 if the
+   *  buffer hasn't loaded (or never existed) — callers can then fall back
+   *  to a default cps. */
+  getEveDuration: (id: string) => number
   /** Fade an ambient layer's target gain from 0 to default over fadeMs. */
   startAmbient: (layer: AmbientLayerName, fadeMs?: number) => void
   /** Fade an ambient layer out. */
@@ -569,6 +573,11 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
 
   // ── Public handle ──
   const live: AudioBufferSourceNode[] = []
+
+  const getEveDuration = (id: string): number => {
+    const buf = eveBuffers.get(id)
+    return buf?.duration ?? 0
+  }
 
   const playEve = (id: string) => {
     const buf = eveBuffers.get(id)
@@ -1084,6 +1093,7 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
 
   return {
     playEve,
+    getEveDuration,
     startAmbient,
     stopAmbient,
     dipAmbient,

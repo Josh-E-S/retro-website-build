@@ -83,16 +83,16 @@ export function Landing({ onEnroll }: Props) {
     engine.playOneShot("beep", { gain: Math.pow(10, -8 / 20), pan: 0 })
 
     window.setTimeout(() => {
-      engine.startAmbient("hvac", 2400)
-      engine.startAmbient("fan", 2400)
-    }, 220)
+      engine.startAmbient("hvac", 1200)
+      engine.startAmbient("fan", 1200)
+    }, 120)
 
     window.setTimeout(() => {
-      engine.startAmbient("ballast", 3000)
-      engine.startAmbient("crtHum", 3500)
-    }, 1800)
+      engine.startAmbient("ballast", 1500)
+      engine.startAmbient("crtHum", 1500)
+    }, 700)
 
-    window.setTimeout(() => engine.startMusic(3500), 4500)
+    window.setTimeout(() => engine.startMusic(1500), 1200)
   }, [])
 
   const handleSelect = useCallback((id: MenuId) => {

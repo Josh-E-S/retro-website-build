@@ -342,6 +342,7 @@ export function Boot({ onComplete, onBarLock }: Props) {
       {showDoNotTrust && (
         <div
           aria-hidden="true"
+          className="boot-donottrust-wrap"
           style={{
             position: "absolute",
             inset: 0,
@@ -350,20 +351,34 @@ export function Boot({ onComplete, onBarLock }: Props) {
             justifyContent: "center",
             pointerEvents: "none",
             zIndex: 5,
+            // Honor iOS notch / home indicator on phones.
+            paddingLeft: "env(safe-area-inset-left)",
+            paddingRight: "env(safe-area-inset-right)",
           }}
         >
           <div
+            className="boot-donottrust"
             style={{
-              fontSize: "clamp(40px, 5vw, 64px)",
+              fontSize: "clamp(28px, 5vw, 64px)",
               fontWeight: 800,
               letterSpacing: "0.4em",
               color: "#ff3a3a",
               textShadow: "0 0 18px rgba(255, 80, 80, 0.85), 0 0 4px #6a0000",
               transform: "translateX(2px)",
+              textAlign: "center",
+              maxWidth: "90vw",
             }}
           >
             DO NOT TRUST
           </div>
+          <style>{`
+            @media (max-width: 640px) {
+              /* Pull the flash below screen-center on phones so it doesn't
+                 stack on top of the loading bar / boot text. */
+              .boot-donottrust-wrap { align-items: flex-end; padding-bottom: 18vh; }
+              .boot-donottrust { letter-spacing: 0.28em; }
+            }
+          `}</style>
         </div>
       )}
 
