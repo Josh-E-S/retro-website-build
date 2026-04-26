@@ -121,7 +121,7 @@ export function Stage({ children, dim = false }: Props) {
             background:
               "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55) 0%, transparent 55%), radial-gradient(ellipse at 50% 110%, var(--paper-deep) 0%, var(--paper) 60%)",
             animation: stage === 3 ? "crt-snap-flicker 240ms ease-out" : undefined,
-            filter: dim ? "brightness(0.45)" : "none",
+            filter: dim ? "brightness(0.72)" : "none",
             transition: "filter 800ms ease-out",
           }}
         />
@@ -135,7 +135,7 @@ export function Stage({ children, dim = false }: Props) {
               position: "absolute",
               inset: 0,
               background: "#000",
-              opacity: 0.35,
+              opacity: 0.16,
               pointerEvents: "none",
               zIndex: 1,
               transition: "opacity 800ms ease-out",
