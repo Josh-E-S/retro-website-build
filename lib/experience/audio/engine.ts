@@ -579,6 +579,28 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     return buf?.duration ?? 0
   }
 
+  // Internal: pull the narration bus down by `depth` dB (relative to its
+  // default) so Eve's voice can sit cleanly on top, then return it to
+  // default. Mirrors the music-duck API but isn't exposed publicly —
+  // narration ducking is always paired with playEve.
+  const duckNarration = (depth: number, fadeMs = 220) => {
+    const mul = Math.pow(10, depth / 20)
+    const target = DEFAULT_LAYER_GAIN.narration * mul
+    const now = ctx.currentTime
+    narrationBus.gain.cancelScheduledValues(now)
+    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+    narrationBus.gain.linearRampToValueAtTime(target, now + fadeMs / 1000)
+  }
+  const unduckNarration = (fadeMs = 600) => {
+    const now = ctx.currentTime
+    narrationBus.gain.cancelScheduledValues(now)
+    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+    narrationBus.gain.linearRampToValueAtTime(
+      DEFAULT_LAYER_GAIN.narration,
+      now + fadeMs / 1000,
+    )
+  }
+
   const playEve = (id: string) => {
     const buf = eveBuffers.get(id)
     if (!buf) {
@@ -590,12 +612,15 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     src.buffer = buf
     src.connect(eveBus)
 
-    // Duck the music under Eve's voice; release when she's done.
+    // Duck both music and the distant-PA narration under Eve's voice so
+    // her line reads cleanly; release both when she's done.
     duckMusic(-12, 220)
+    duckNarration(-14, 220)
     src.onended = () => {
       const i = live.indexOf(src); if (i >= 0) live.splice(i, 1)
       try { src.disconnect() } catch { /* noop */ }
       unduckMusic(600)
+      unduckNarration(600)
     }
     live.push(src)
     src.start()
@@ -683,14 +708,21 @@ export async function createAudioEngine(): Promise<AudioEngineHandle> {
     narrationStopped = false
 
     // Bring the bus up once. The chain inherits the same level — both
-    // intro and body play at the established narration gain.
+    // intro and body play at the established narration gain. fadeMs=0
+    // means "snap on" — Web Audio's linearRampToValueAtTime requires
+    // a future end time > previous event, so we setValueAtTime directly
+    // for instant on instead of an unreliable zero-length ramp.
     const now = ctx.currentTime
     narrationBus.gain.cancelScheduledValues(now)
-    narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
-    narrationBus.gain.linearRampToValueAtTime(
-      DEFAULT_LAYER_GAIN.narration,
-      now + fadeMs / 1000,
-    )
+    if (fadeMs <= 0) {
+      narrationBus.gain.setValueAtTime(DEFAULT_LAYER_GAIN.narration, now)
+    } else {
+      narrationBus.gain.setValueAtTime(narrationBus.gain.value, now)
+      narrationBus.gain.linearRampToValueAtTime(
+        DEFAULT_LAYER_GAIN.narration,
+        now + fadeMs / 1000,
+      )
+    }
 
     const playBody = () => {
       if (narrationStopped) return
