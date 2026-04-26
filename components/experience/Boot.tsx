@@ -373,10 +373,10 @@ export function Boot({ onComplete, onBarLock }: Props) {
           </div>
           <style>{`
             @media (max-width: 640px) {
-              /* Pull the flash below screen-center on phones so it doesn't
-                 stack on top of the loading bar / boot text. */
-              .boot-donottrust-wrap { align-items: flex-end; padding-bottom: 18vh; }
-              .boot-donottrust { letter-spacing: 0.28em; }
+              /* Keep the flash centered on portrait phones, but tighten
+                 the letter-spacing so the word still fits inside 90vw
+                 at the smaller font clamp. */
+              .boot-donottrust { letter-spacing: 0.22em; font-size: clamp(26px, 9vw, 44px); }
             }
           `}</style>
         </div>

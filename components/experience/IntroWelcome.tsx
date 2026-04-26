@@ -46,10 +46,24 @@ export function IntroWelcome({ visible, subtitle }: Props) {
     return () => window.clearTimeout(id)
   }, [])
 
+  // Heavier, faster scrambler so the title visibly shimmers the entire
+  // time it's on screen — not just an opening flourish.
   const brandDisplay = useFlickerText(BRAND_TEXT, visible && appeared, {
-    intervalMin: 600,
-    intervalMax: 1300,
-    parallelChance: 0.22,
+    intervalMin: 180,
+    intervalMax: 520,
+    parallelChance: 0.55,
+  })
+  const preambleDisplay = useFlickerText(PREAMBLE_TEXT, visible && appeared, {
+    intervalMin: 320,
+    intervalMax: 900,
+    parallelChance: 0.3,
+  })
+  const subtitleSource =
+    subtitle === undefined ? SUBTITLE_TEXT : subtitle ?? ""
+  const subtitleDisplay = useFlickerText(subtitleSource, visible && appeared, {
+    intervalMin: 280,
+    intervalMax: 760,
+    parallelChance: 0.4,
   })
 
   const opacity = visible && appeared ? 1 : 0
@@ -88,10 +102,15 @@ export function IntroWelcome({ visible, subtitle }: Props) {
           letterSpacing: "0.5em",
           textIndent: "0.5em",
           color: "rgba(232, 230, 220, 0.55)",
-          textShadow: "0 1px 0 rgba(0, 0, 0, 0.55)",
+          textShadow: [
+            "0.6px 0 0 rgba(31, 182, 193, 0.5)",
+            "-0.6px 0 0 rgba(200, 75, 143, 0.5)",
+            "0 1px 0 rgba(0, 0, 0, 0.55)",
+          ].join(", "),
+          animation: "intro-welcome-flicker 4.2s ease-in-out infinite",
         }}
       >
-        {PREAMBLE_TEXT}
+        {preambleDisplay}
       </div>
 
       {/* Brand stamp — large, heavy, with the print-registration ghost.
@@ -115,28 +134,30 @@ export function IntroWelcome({ visible, subtitle }: Props) {
         {brandDisplay}
       </div>
 
-      {(() => {
-        const text = subtitle === undefined ? SUBTITLE_TEXT : subtitle
-        if (!text) return null
-        return (
-          <div
-            style={{
-              marginTop: "18px",
-              fontSize: "clamp(14px, 1.15vw, 17px)",
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              color: "rgba(232, 230, 220, 0.78)",
-              textShadow:
-                "0 1px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.4)",
-              maxWidth: "min(82vw, 720px)",
-              margin: "18px auto 0",
-              lineHeight: 1.55,
-            }}
-          >
-            {text}
-          </div>
-        )
-      })()}
+      {subtitleSource && (
+        <div
+          className="intro-welcome-subtitle"
+          style={{
+            marginTop: "18px",
+            fontSize: "clamp(14px, 1.15vw, 17px)",
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "rgba(232, 230, 220, 0.78)",
+            textShadow: [
+              "0.8px 0 0 rgba(31, 182, 193, 0.5)",
+              "-0.8px 0 0 rgba(200, 75, 143, 0.5)",
+              "0 1px 0 rgba(0, 0, 0, 0.55)",
+              "0 0 12px rgba(0, 0, 0, 0.4)",
+            ].join(", "),
+            maxWidth: "min(82vw, 720px)",
+            margin: "18px auto 0",
+            lineHeight: 1.55,
+            animation: "intro-welcome-flicker 3.4s ease-in-out infinite",
+          }}
+        >
+          {subtitleDisplay}
+        </div>
+      )}
 
       <style>{`
         @keyframes intro-welcome-flicker {
