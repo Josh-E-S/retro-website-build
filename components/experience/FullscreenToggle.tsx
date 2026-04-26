@@ -5,17 +5,12 @@ import { useCallback, useEffect, useState } from "react"
 /*
  * FullscreenToggle — small icon button pinned to the top-right.
  *
- * Hidden until JS confirms the Fullscreen API is available (some
- * embedded contexts disallow it; iOS Safari only supports it on
- * <video>, not document). Visible across every phase so the player
- * can swap modes whenever they want.
+ * Always rendered so users can find it on any browser. The Fullscreen
+ * API is well-supported on desktop Chromium (Brave/Chrome/Edge) and
+ * desktop Safari; iOS Safari/Brave has limited or no support, but
+ * showing the button there is harmless — `requestFullscreen` simply
+ * returns a rejected promise that we swallow.
  */
-
-function isFullscreenSupported(): boolean {
-  if (typeof document === "undefined") return false
-  const doc = document as Document & { webkitFullscreenEnabled?: boolean }
-  return Boolean(doc.fullscreenEnabled || doc.webkitFullscreenEnabled)
-}
 
 function getFullscreenElement(): Element | null {
   const doc = document as Document & { webkitFullscreenElement?: Element | null }
@@ -23,33 +18,39 @@ function getFullscreenElement(): Element | null {
 }
 
 async function enter(): Promise<void> {
-  const el = document.documentElement as HTMLElement & {
-    webkitRequestFullscreen?: () => Promise<void>
-  }
-  if (el.requestFullscreen) {
-    await el.requestFullscreen()
-  } else if (el.webkitRequestFullscreen) {
-    await el.webkitRequestFullscreen()
+  try {
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>
+    }
+    if (el.requestFullscreen) {
+      await el.requestFullscreen()
+    } else if (el.webkitRequestFullscreen) {
+      await el.webkitRequestFullscreen()
+    }
+  } catch {
+    // Browser refused (iframe sandbox, iOS Safari, etc.) — silently fail.
   }
 }
 
 async function exit(): Promise<void> {
-  const doc = document as Document & {
-    webkitExitFullscreen?: () => Promise<void>
-  }
-  if (document.exitFullscreen) {
-    await document.exitFullscreen()
-  } else if (doc.webkitExitFullscreen) {
-    await doc.webkitExitFullscreen()
+  try {
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void>
+    }
+    if (document.exitFullscreen) {
+      await document.exitFullscreen()
+    } else if (doc.webkitExitFullscreen) {
+      await doc.webkitExitFullscreen()
+    }
+  } catch {
+    // Already out, or unsupported.
   }
 }
 
 export function FullscreenToggle() {
-  const [supported, setSupported] = useState(false)
   const [isFs, setIsFs] = useState(false)
 
   useEffect(() => {
-    setSupported(isFullscreenSupported())
     const update = () => setIsFs(getFullscreenElement() !== null)
     update()
     document.addEventListener("fullscreenchange", update)
@@ -64,8 +65,6 @@ export function FullscreenToggle() {
     if (getFullscreenElement()) void exit()
     else void enter()
   }, [])
-
-  if (!supported) return null
 
   return (
     <button
