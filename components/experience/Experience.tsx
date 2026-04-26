@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Landing } from "./Landing"
+import { FullscreenToggle } from "./FullscreenToggle"
 import { Boot } from "./Boot"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
@@ -220,6 +221,9 @@ export function Experience() {
   const handleEnroll = useCallback((engine: AudioEngineHandle) => {
     audioRef.current = engine
     engine.playOneShot("beep", { gain: Math.pow(10, -3 / 20), pan: 0 })
+    // Enrollment ends the orientation moment — fade the distant-PA
+    // narration out so Eve's intro can land cleanly.
+    engine.stopNarration(800)
     setPhase("boot")
   }, [])
 
@@ -295,6 +299,7 @@ export function Experience() {
 
   return (
     <main aria-hidden="true">
+      <FullscreenToggle />
       {phase === "landing" && <Landing onEnroll={handleEnroll} />}
       {phase === "boot" && (
         <Boot onComplete={handleBootComplete} onBarLock={handleBootBarLock} />
