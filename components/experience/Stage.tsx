@@ -178,7 +178,7 @@ export function Stage({ children, dim = false }: Props) {
             position: "absolute",
             left: 0,
             right: 0,
-            height: "80px",
+            height: "clamp(40px, 8vh, 80px)",
             pointerEvents: "none",
             background:
               "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0) 100%)",
