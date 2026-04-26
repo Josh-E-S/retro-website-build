@@ -25,9 +25,13 @@ type Props = {
   /** True while intro phase is active. Flip to false to fade the card
    *  out before unmount. */
   visible: boolean
+  /** Override subtitle. Pass an empty string to suppress entirely (the
+   *  landing page hides it because the side menu carries the call to
+   *  action; intro keeps the default "press any key" line). */
+  subtitle?: string | null
 }
 
-export function IntroWelcome({ visible }: Props) {
+export function IntroWelcome({ visible, subtitle }: Props) {
   // Track whether we've cleared the initial fade-in delay. Without this
   // the card would pop in instantly on mount, undermining the white
   // flash → cream paper handoff.
@@ -88,22 +92,28 @@ export function IntroWelcome({ visible }: Props) {
         {titleDisplay}
       </div>
 
-      <div
-        style={{
-          marginTop: "18px",
-          fontSize: "clamp(14px, 1.15vw, 17px)",
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          color: "rgba(232, 230, 220, 0.78)",
-          textShadow:
-            "0 1px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.4)",
-          maxWidth: "min(82vw, 720px)",
-          margin: "18px auto 0",
-          lineHeight: 1.55,
-        }}
-      >
-        {SUBTITLE_TEXT}
-      </div>
+      {(() => {
+        const text = subtitle === undefined ? SUBTITLE_TEXT : subtitle
+        if (!text) return null
+        return (
+          <div
+            style={{
+              marginTop: "18px",
+              fontSize: "clamp(14px, 1.15vw, 17px)",
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "rgba(232, 230, 220, 0.78)",
+              textShadow:
+                "0 1px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.4)",
+              maxWidth: "min(82vw, 720px)",
+              margin: "18px auto 0",
+              lineHeight: 1.55,
+            }}
+          >
+            {text}
+          </div>
+        )
+      })()}
 
       <style>{`
         @keyframes intro-welcome-flicker {

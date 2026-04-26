@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Wakeup } from "./Wakeup"
+import { Landing } from "./Landing"
 import { Boot } from "./Boot"
 import { Stage } from "./Stage"
 import { Terminal, type TerminalHandle } from "./Terminal"
@@ -17,29 +17,31 @@ import { createAudioEngine, type AudioEngineHandle } from "@/lib/experience/audi
  * Experience — top-level client component.
  *
  * State machine:
- *   "wakeup"  — amber title + prompt + cursor. Pre-audio.
- *   "boot"    — first space pressed. Amber-on-black loading bar with
- *               status lines and gibberish; ends in a white flash that
- *               crossfades into the cream Stage. Power-on SFX, ambient,
- *               and music ramp underneath this whole window.
- *   "intro"   — Stage mounted, ambient/music/artifacts running, intro.mp4
- *               looping at 50% over the top. Distant PA narration starts
- *               ~4s after entering this phase. The clock is NOT started
- *               yet — boot sequence and Eve are deferred until the player
- *               commits a second time.
+ *   "landing" — first screen. Stage running, audio gated by the
+ *               SynchronizeAudio pushbutton. Side menu visible after
+ *               audio's on; only "Enroll in Study" advances. Other
+ *               menu items show TransmissionUnavailable stubs.
+ *   "boot"    — Enroll clicked. Amber-on-black loading bar with status
+ *               lines and gibberish; ends in a white flash that
+ *               crossfades into the cream Stage. Music + ambient
+ *               continue from landing seamlessly across this window.
+ *   "intro"   — Welcome card with full instruction; PA narration
+ *               starts ~4s after entering this phase. The clock is
+ *               NOT started yet — boot sequence and Eve are deferred
+ *               until the player commits a second time.
  *   "running" — Second input received. Intro video unmounts, the clock
  *               starts at t=0 and the welcome stanza → boot checklist →
  *               Eve sequence plays out as before.
  */
 
-type Phase = "wakeup" | "boot" | "intro" | "running"
+type Phase = "landing" | "boot" | "intro" | "running"
 
 // Narration kicks ~4 seconds after entering intro (i.e. just after the
 // white-flash settles into the cream stage).
 const NARRATION_DELAY_AFTER_INTRO_MS = 4000
 
 export function Experience() {
-  const [phase, setPhase] = useState<Phase>("wakeup")
+  const [phase, setPhase] = useState<Phase>("landing")
   const terminalRef = useRef<TerminalHandle | null>(null)
   // State mirror so children that need to observe the handle (e.g.
   // QuoteRotator) can re-render once the Terminal is ready.
@@ -198,49 +200,14 @@ export function Experience() {
     }
   }, [])
 
-  const handleUnlock = useCallback((_latencyMs: number, audio: AudioEngineHandle) => {
-    audioRef.current = audio
-    // Wake-up pacing. From click:
-    //   0ms        — power-on SFX (beep / Pentium / fuses). Black screen.
-    //   ~400ms     — distant ambient (HVAC + fan) start rising over 3s.
-    //                Player hears "I'm somewhere" — no light yet.
-    //   240–5000ms — pure black, just sounds. ~4.7s of disorientation.
-    //   5000ms     — intro video begins fading in over 3s (handled by
-    //                IntroVideo's own internal delay).
-    //   5000ms     — closer ambient (ballast, CRT hum) join, 3s fade.
-    //   ~9000ms    — lobby music begins fading in over 3.5s, after the
-    //                video is established.
-    //   ~12500ms   — first quote types in (handled by QuoteRotator).
-
-    // 0ms — power-on SFX immediately.
-    audio.playOneShot("beep", { gain: Math.pow(10, -2 / 20), pan: 0 })
-    window.setTimeout(() => audio.playOneShot("pentiumBoot", { gain: Math.pow(10, -1 / 20), pan: 0 }), 160)
-    window.setTimeout(() => audio.playOneShot("fuse", { gain: Math.pow(10, -12 / 20), pan: -0.2 }), 200)
-    window.setTimeout(() => audio.playOneShot("fuse", { gain: Math.pow(10, -14 / 20), pan: 0.15 }), 600)
-
-    // ~400ms — distant ambient layers only. The player hears the room
-    // around them before they see it.
-    window.setTimeout(() => {
-      audio.startAmbient("hvac", 3000)
-      audio.startAmbient("fan", 3000)
-    }, 400)
-
-    // ~5000ms — closer ambient layers join just as the video starts to
-    // bleed in. The room sharpens around the same moment the eyes do.
-    window.setTimeout(() => {
-      audio.startAmbient("ballast", 3000)
-      audio.startAmbient("crtHum", 3500)
-    }, 5000)
-
-    // ~9000ms — music fades up after the video is visible. Long fade
-    // so it doesn't punch in.
-    window.setTimeout(() => audio.startMusic(3500), 9000)
-
-    // Narration is scheduled later via a phase-driven effect — it
-    // starts ~4s after entering "intro" (i.e. just after the boot's
-    // white flash settles), so its timing stays anchored to the visual
-    // beat regardless of how the boot length is tuned.
-
+  // Landing → Boot. The audio engine + ambient bed + music were
+  // already started by Landing when the player engaged the
+  // SynchronizeAudio button, so all we do here is store the handle
+  // and advance the phase. A single boot-prep beep punctuates the
+  // commitment without doubling up on the existing ambience.
+  const handleEnroll = useCallback((engine: AudioEngineHandle) => {
+    audioRef.current = engine
+    engine.playOneShot("beep", { gain: Math.pow(10, -3 / 20), pan: 0 })
     setPhase("boot")
   }, [])
 
@@ -321,7 +288,7 @@ export function Experience() {
 
   return (
     <main aria-hidden="true">
-      {phase === "wakeup" && <Wakeup onUnlock={handleUnlock} />}
+      {phase === "landing" && <Landing onEnroll={handleEnroll} />}
       {phase === "boot" && (
         <Boot onComplete={handleBootComplete} onBarLock={handleBootBarLock} />
       )}
